@@ -1,0 +1,29 @@
+# General ignores
+.DS_Store
+/.idea/
+api_results.json
+
+# Rendered configs — never commit these. Only the `.example` /
+# `.template` versions belong in git.
+local.yml
+atm/config/docker.yml
+test*.py
+test.png
+final.py
+
+# Directories
+temp/
+env/
+
+# Python bytecode
+__pycache__/
+*.pyc
+*.pyo
+
+# PaddleOCR CLI output. Weights live in-tree at
+# atm/core/ocr/ocr_models/ and are intentionally NOT ignored — leading
+# slash anchors this rule so only a stray top-level ocr_models/ (from an
+# older layout) is skipped.
+/ocr_models/
+ocr_output/
+data/
