@@ -1,0 +1,191 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1500 750" width="1500" height="750" role="img" aria-label="Blanc — Threat Modeling Studio">
+  <defs>
+    <!-- Sheen gradient (wordmark highlight sweep) -->
+    <linearGradient id="sweep" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%"   stop-color="#ffffff" stop-opacity="0"/>
+      <stop offset="45%"  stop-color="#ffffff" stop-opacity="0"/>
+      <stop offset="50%"  stop-color="#ffffff" stop-opacity="0.10"/>
+      <stop offset="55%"  stop-color="#ffffff" stop-opacity="0"/>
+      <stop offset="100%" stop-color="#ffffff" stop-opacity="0"/>
+    </linearGradient>
+    <clipPath id="wordmarkClip">
+      <rect x="360" y="220" width="780" height="260"/>
+    </clipPath>
+  </defs>
+
+  <!-- ─── Background ─────────────────────────────────────────────── -->
+  <rect width="1500" height="750" fill="#000000"/>
+
+  <!-- ─── LAYER 1 — Threat network graph (nodes + edges + packets) ── -->
+  <g id="threat-network" opacity="0">
+    <animate attributeName="opacity" values="0;1" dur="1.8s" begin="0.4s" fill="freeze"/>
+
+    <!-- Edges (thin, low-opacity) -->
+    <g stroke="#ffffff" stroke-opacity="0.09" stroke-width="1">
+      <line x1="150"  y1="180" x2="280"  y2="400"/>
+      <line x1="280"  y1="400" x2="200"  y2="620"/>
+      <line x1="150"  y1="180" x2="450"  y2="130"/>
+      <line x1="450"  y1="130" x2="280"  y2="400"/>
+      <line x1="280"  y1="400" x2="500"  y2="660"/>
+      <line x1="1050" y1="130" x2="1200" y2="380"/>
+      <line x1="1200" y1="380" x2="1100" y2="620"/>
+      <line x1="1350" y1="180" x2="1200" y2="380"/>
+      <line x1="1200" y1="380" x2="1380" y2="550"/>
+      <line x1="1050" y1="130" x2="1350" y2="180"/>
+      <line x1="1100" y1="620" x2="1380" y2="550"/>
+    </g>
+
+    <!-- Nodes (subtle continuous pulse) -->
+    <g fill="#ffffff">
+      <circle cx="150"  cy="180" r="2.5"><animate attributeName="opacity" values="0.35;0.75;0.35" dur="3s"   repeatCount="indefinite"/></circle>
+      <circle cx="280"  cy="400" r="3"  ><animate attributeName="opacity" values="0.45;0.85;0.45" dur="3.6s" repeatCount="indefinite"/></circle>
+      <circle cx="200"  cy="620" r="2.5"><animate attributeName="opacity" values="0.3;0.7;0.3"    dur="4.1s" repeatCount="indefinite"/></circle>
+      <circle cx="450"  cy="130" r="2.5"><animate attributeName="opacity" values="0.35;0.75;0.35" dur="3.2s" repeatCount="indefinite"/></circle>
+      <circle cx="500"  cy="660" r="2.5"><animate attributeName="opacity" values="0.3;0.7;0.3"    dur="4.4s" repeatCount="indefinite"/></circle>
+      <circle cx="1050" cy="130" r="2.5"><animate attributeName="opacity" values="0.35;0.75;0.35" dur="3.8s" repeatCount="indefinite"/></circle>
+      <circle cx="1200" cy="380" r="3"  ><animate attributeName="opacity" values="0.5;0.9;0.5"    dur="3.4s" repeatCount="indefinite"/></circle>
+      <circle cx="1100" cy="620" r="2.5"><animate attributeName="opacity" values="0.35;0.75;0.35" dur="3s"   repeatCount="indefinite"/></circle>
+      <circle cx="1350" cy="180" r="2.5"><animate attributeName="opacity" values="0.3;0.7;0.3"    dur="4s"   repeatCount="indefinite"/></circle>
+      <circle cx="1380" cy="550" r="2.5"><animate attributeName="opacity" values="0.3;0.7;0.3"    dur="3.6s" repeatCount="indefinite"/></circle>
+    </g>
+
+    <!-- Packets in flight (red = threats, white = data) -->
+    <circle r="3" fill="#d23f3c">
+      <animate attributeName="cx"      values="150;450;150"       dur="3.6s" begin="1.0s" repeatCount="indefinite"/>
+      <animate attributeName="cy"      values="180;130;180"       dur="3.6s" begin="1.0s" repeatCount="indefinite"/>
+      <animate attributeName="opacity" values="0;1;1;1;0"         dur="3.6s" begin="1.0s" repeatCount="indefinite"/>
+    </circle>
+    <circle r="2.5" fill="#ffffff">
+      <animate attributeName="cx"      values="280;200;280"       dur="4.2s" begin="1.6s" repeatCount="indefinite"/>
+      <animate attributeName="cy"      values="400;620;400"       dur="4.2s" begin="1.6s" repeatCount="indefinite"/>
+      <animate attributeName="opacity" values="0;0.9;0.9;0.9;0"   dur="4.2s" begin="1.6s" repeatCount="indefinite"/>
+    </circle>
+    <circle r="3" fill="#d23f3c">
+      <animate attributeName="cx"      values="1200;1380;1200"    dur="4.0s" begin="2.2s" repeatCount="indefinite"/>
+      <animate attributeName="cy"      values="380;550;380"       dur="4.0s" begin="2.2s" repeatCount="indefinite"/>
+      <animate attributeName="opacity" values="0;1;1;1;0"         dur="4.0s" begin="2.2s" repeatCount="indefinite"/>
+    </circle>
+    <circle r="2.5" fill="#ffffff">
+      <animate attributeName="cx"      values="1050;1350;1050"    dur="3.8s" begin="0.8s" repeatCount="indefinite"/>
+      <animate attributeName="cy"      values="130;180;130"       dur="3.8s" begin="0.8s" repeatCount="indefinite"/>
+      <animate attributeName="opacity" values="0;0.9;0.9;0.9;0"   dur="3.8s" begin="0.8s" repeatCount="indefinite"/>
+    </circle>
+    <circle r="3" fill="#d23f3c">
+      <animate attributeName="cx"      values="280;500;280"       dur="4.6s" begin="2.8s" repeatCount="indefinite"/>
+      <animate attributeName="cy"      values="400;660;400"       dur="4.6s" begin="2.8s" repeatCount="indefinite"/>
+      <animate attributeName="opacity" values="0;1;1;1;0"         dur="4.6s" begin="2.8s" repeatCount="indefinite"/>
+    </circle>
+  </g>
+
+  <!-- ─── LAYER 2 — Radar sweep rings from the red dot ─────────────── -->
+  <g id="radar" opacity="0">
+    <animate attributeName="opacity" values="0;1" dur="0.8s" begin="2.4s" fill="freeze"/>
+    <circle cx="1110" cy="418" r="22" fill="none" stroke="#d23f3c" stroke-width="1.5">
+      <animate attributeName="r"       values="22;190" dur="3.6s" begin="2.4s" repeatCount="indefinite"/>
+      <animate attributeName="opacity" values="0.7;0"  dur="3.6s" begin="2.4s" repeatCount="indefinite"/>
+    </circle>
+    <circle cx="1110" cy="418" r="22" fill="none" stroke="#d23f3c" stroke-width="1.5">
+      <animate attributeName="r"       values="22;190" dur="3.6s" begin="3.6s" repeatCount="indefinite"/>
+      <animate attributeName="opacity" values="0.6;0"  dur="3.6s" begin="3.6s" repeatCount="indefinite"/>
+    </circle>
+    <circle cx="1110" cy="418" r="22" fill="none" stroke="#d23f3c" stroke-width="1.5">
+      <animate attributeName="r"       values="22;190" dur="3.6s" begin="4.8s" repeatCount="indefinite"/>
+      <animate attributeName="opacity" values="0.5;0"  dur="3.6s" begin="4.8s" repeatCount="indefinite"/>
+    </circle>
+  </g>
+
+  <!-- ─── LAYER 3 — HUD corner brackets + tick marks + labels ──────── -->
+  <g id="hud" fill="none" stroke-width="2" stroke-linecap="round">
+    <path d="M 60 130 L 60 80 L 130 80"     stroke="#ffffff" stroke-dasharray="120" stroke-dashoffset="120">
+      <animate attributeName="stroke-dashoffset" from="120" to="0" dur="0.9s" begin="0.6s" fill="freeze"/>
+    </path>
+    <path d="M 1370 80 L 1440 80 L 1440 130" stroke="#d23f3c" stroke-dasharray="120" stroke-dashoffset="120">
+      <animate attributeName="stroke-dashoffset" from="120" to="0" dur="0.9s" begin="0.8s" fill="freeze"/>
+    </path>
+    <path d="M 60 620 L 60 670 L 130 670"    stroke="#d23f3c" stroke-dasharray="120" stroke-dashoffset="120">
+      <animate attributeName="stroke-dashoffset" from="120" to="0" dur="0.9s" begin="0.8s" fill="freeze"/>
+    </path>
+    <path d="M 1370 670 L 1440 670 L 1440 620" stroke="#ffffff" stroke-dasharray="120" stroke-dashoffset="120">
+      <animate attributeName="stroke-dashoffset" from="120" to="0" dur="0.9s" begin="0.6s" fill="freeze"/>
+    </path>
+
+    <!-- Tick marks along top edge -->
+    <g stroke="#ffffff" stroke-opacity="0.35" stroke-width="1" opacity="0">
+      <animate attributeName="opacity" values="0;0.6" dur="0.8s" begin="1.4s" fill="freeze"/>
+      <line x1="200"  y1="80" x2="200"  y2="88"/>
+      <line x1="300"  y1="80" x2="300"  y2="88"/>
+      <line x1="400"  y1="80" x2="400"  y2="88"/>
+      <line x1="1100" y1="80" x2="1100" y2="88"/>
+      <line x1="1200" y1="80" x2="1200" y2="88"/>
+      <line x1="1300" y1="80" x2="1300" y2="88"/>
+    </g>
+
+    <!-- HUD label tags -->
+    <g opacity="0">
+      <animate attributeName="opacity" values="0;0.75" dur="0.8s" begin="1.6s" fill="freeze"/>
+      <text x="150"  y="105" fill="#ffffff" font-family="'JetBrains Mono','Fira Code','Courier New',monospace" font-size="11" letter-spacing="2">SYS/BLANC-01</text>
+      <text x="1440" y="105" fill="#d23f3c" font-family="'JetBrains Mono','Fira Code','Courier New',monospace" font-size="11" letter-spacing="2" text-anchor="end">◉ REC · THREAT-FEED</text>
+      <text x="150"  y="662" fill="#d23f3c" font-family="'JetBrains Mono','Fira Code','Courier New',monospace" font-size="11" letter-spacing="2">STRIDE · LINDDUN</text>
+      <text x="1440" y="662" fill="#ffffff" font-family="'JetBrains Mono','Fira Code','Courier New',monospace" font-size="11" letter-spacing="2" text-anchor="end">v1.0 · APPSEC</text>
+    </g>
+  </g>
+
+  <!-- ─── LAYER 4 — Hex / threat-token telemetry ticker (bottom) ───── -->
+  <g opacity="0">
+    <animate attributeName="opacity" values="0;0.42" dur="1s" begin="1.5s" fill="freeze"/>
+    <g>
+      <animateTransform attributeName="transform" type="translate" from="1500 0" to="-3000 0" dur="60s" repeatCount="indefinite"/>
+      <text x="0" y="712" fill="#ffffff" font-family="'JetBrains Mono','Fira Code','Courier New',monospace" font-size="13" letter-spacing="2">
+        0x3F8A · SHA3-256 · b7:c1:ef:04 · STRIDE.spoofing · LINDDUN.linkability · CVE-2025-42198 · trust_boundary=crossed · 0xDEADBEEF · rag://appsec/kb/threats · component=api-gw · jwt.exp · MTM.session · asset:pii · nonce=0x9F2A · 0x7ABC · 0xC0FFEE · 0xFACE · 0x1337 · framework=STRIDE · severity=HIGH · likelihood=MEDIUM
+      </text>
+    </g>
+  </g>
+
+  <!-- ─── WORDMARK — "Blanc" + pulsing red dot (centered on canvas) ── -->
+  <g opacity="0">
+    <animate attributeName="opacity" values="0;1" dur="1.2s" begin="0.1s" fill="freeze"/>
+
+    <text x="1088" y="430" text-anchor="end" textLength="720" lengthAdjust="spacingAndGlyphs" fill="#ffffff"
+          font-family="'Playfair Display','DM Serif Display','Cormorant Garamond',Georgia,'Times New Roman',serif"
+          font-weight="400" font-size="280">Blanc</text>
+
+    <!-- Soft glow -->
+    <circle cx="1110" cy="418" r="34" fill="#d23f3c" opacity="0">
+      <animate attributeName="opacity" values="0;0.35;0" dur="2.4s" begin="1.6s" repeatCount="indefinite"/>
+      <animate attributeName="r"       values="30;48;30" dur="2.4s" begin="1.6s" repeatCount="indefinite"/>
+    </circle>
+
+    <!-- Red dot -->
+    <circle cx="1110" cy="418" r="22" fill="#d23f3c">
+      <animate attributeName="r"       values="22;28;22" dur="2.4s" begin="1.6s" repeatCount="indefinite"/>
+      <animate attributeName="opacity" values="1;0.7;1"  dur="2.4s" begin="1.6s" repeatCount="indefinite"/>
+    </circle>
+  </g>
+
+  <!-- ─── SUBTITLE — "THREAT MODELING STUDIO" ─────────────────────── -->
+  <g opacity="0">
+    <animate attributeName="opacity" values="0;1" dur="1s" begin="1.1s" fill="freeze"/>
+    <animateTransform attributeName="transform" type="translate" from="0 18" to="0 0" begin="1.1s" dur="1s" fill="freeze"/>
+    <text x="750" y="525" text-anchor="middle" fill="#ffffff"
+          font-family="Helvetica, Arial, sans-serif"
+          font-weight="400" font-size="34" letter-spacing="14">THREAT MODELING STUDIO</text>
+  </g>
+
+  <!-- Accent underlines: draw in from left -->
+  <line x1="685" y1="560" x2="685" y2="560" stroke="#ffffff" stroke-width="3" stroke-linecap="round" opacity="0">
+    <animate attributeName="opacity" values="0;1"     dur="0.2s" begin="2.00s" fill="freeze"/>
+    <animate attributeName="x2"      from="685" to="740" dur="0.6s" begin="2.00s" fill="freeze"/>
+  </line>
+  <line x1="760" y1="560" x2="760" y2="560" stroke="#d23f3c" stroke-width="3" stroke-linecap="round" opacity="0">
+    <animate attributeName="opacity" values="0;1"     dur="0.2s" begin="2.15s" fill="freeze"/>
+    <animate attributeName="x2"      from="760" to="815" dur="0.6s" begin="2.15s" fill="freeze"/>
+  </line>
+
+  <!-- ─── Sheen sweep across wordmark ─────────────────────────────── -->
+  <g clip-path="url(#wordmarkClip)" opacity="0">
+    <animate attributeName="opacity" values="0;1" dur="0.4s" begin="2.6s" fill="freeze"/>
+    <rect x="-600" y="220" width="600" height="260" fill="url(#sweep)">
+      <animate attributeName="x" values="-600;1700" dur="4.5s" begin="2.6s" repeatCount="indefinite"/>
+    </rect>
+  </g>
+</svg>
