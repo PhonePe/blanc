@@ -17,11 +17,11 @@
 
 [![Join Discord](https://img.shields.io/badge/Join-Discord-5865F2?style=for-the-badge&logo=discord&logoColor=FFFFFF&labelColor=555555)](https://discord.gg/)
 &nbsp;
-[![Read the Docs](https://img.shields.io/badge/Read-the%20Docs-FFFFFF?style=for-the-badge&logo=readthedocs&logoColor=FFFFFF&labelColor=555555)](atm_service/CODEBASE_DOCUMENTATION.md)
+[![Read the Docs](https://img.shields.io/badge/Read-the%20Docs-FFFFFF?style=for-the-badge&logo=readthedocs&logoColor=FFFFFF&labelColor=555555)](blancService/CODEBASE_DOCUMENTATION.md)
 
 <br/>
 
-**[Quick Start](#quick-start)** · **[Why Blanc](#why-blanc)** · **[Framework Coverage](#framework-coverage)** · **[How It Works](#how-blanc-works)** · **[Docs](atm_service/CODEBASE_DOCUMENTATION.md)**
+**[Quick Start](#quick-start)** · **[Why Blanc](#why-blanc)** · **[Framework Coverage](#framework-coverage)** · **[How It Works](#how-blanc-works)** · **[Docs](blancService/CODEBASE_DOCUMENTATION.md)**
 
 <br/>
 
@@ -89,26 +89,19 @@ At a high level, Blanc follows this analysis flow:
 
 ## Quick Start
 
-Blanc has two components — a FastAPI backend (`atm_service/`) and a Next.js studio (`atm/`). You'll need Python 3.12, Node.js 20+, MariaDB 10.6+, RabbitMQ 3.11+, and an OpenAI-compatible LLM endpoint.
+Blanc has two components — a FastAPI backend (`blancService/`) and a Next.js studio (`blancUi/`). You'll need Python 3.12, Node.js 20+, MariaDB 10.6+, RabbitMQ 3.11+, and an OpenAI-compatible LLM endpoint.
 
-### Run via Docker
+### Run via Docker Compose (recommended)
 
-You can build docker images for both services from the repository.
+The bundled `docker-compose.yml` brings up MariaDB, RabbitMQ, the FastAPI backend, and the Next.js studio in one shot:
 
 ```bash
 git clone https://github.com/blanc-project/blanc.git
 cd blanc
-
-# Backend
-docker build -t blanc-service ./atm_service
-docker run -p 8000:8000 --env ENV=local blanc-service
-
-# Studio
-docker build -t blanc-studio ./atm
-docker run -p 3000:80 blanc-studio
+docker compose up --build
 ```
 
-> The studio talks to the backend at `http://localhost:8000` by default. Update the API base URL in [atm/lib/api-client.ts](atm/lib/api-client.ts) if you're running the services on different hosts.
+> The studio talks to the backend at `http://localhost:8000` by default. Update the API base URL in [blancUi/lib/api-client.ts](blancUi/lib/api-client.ts) if you're running the services on different hosts.
 
 ### Run locally
 
@@ -117,14 +110,14 @@ git clone https://github.com/blanc-project/blanc.git
 cd blanc
 
 # Backend
-cd atm_service
+cd blancService
 python3.12 -m venv env
 source env/bin/activate
 pip install -r requirements.txt
 ENV=local python3 main.py
 
 # Studio (in a second terminal)
-cd ../atm
+cd ../blancUi
 npm install
 npm run dev
 ```
