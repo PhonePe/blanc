@@ -10,6 +10,7 @@ import {
   type WheelEvent as ReactWheelEvent,
 } from "react"
 import { AlertTriangle, Loader2, Maximize2, Move, RotateCcw, ZoomIn, ZoomOut } from "lucide-react"
+import { useTheme } from "next-themes"
 
 import { Button } from "@/components/ui/button"
 import { renderMermaidSvg } from "@/lib/mermaid"
@@ -80,6 +81,14 @@ export function MermaidCanvas({
   const statusCbRef = useRef(onStatusChange)
   useEffect(() => { statusCbRef.current = onStatusChange }, [onStatusChange])
 
+  // Track the resolved theme so we can re-render the SVG with dark or
+  // light Mermaid theme variables. next-themes yields `undefined` on the
+  // server + initial paint (before hydration), so fall back to "light"
+  // there — a MutationObserver inside the mermaid helper doesn't quite
+  // fit here because the SVG is a computed string, not a live DOM subtree.
+  const { resolvedTheme } = useTheme()
+  const mermaidTheme: "light" | "dark" = resolvedTheme === "dark" ? "dark" : "light"
+
   // Render the Mermaid source into an SVG string. We render off-DOM so we
   // can inject it via dangerouslySetInnerHTML on the transformed layer.
   useEffect(() => {
@@ -92,7 +101,7 @@ export function MermaidCanvas({
     }
     setRenderLoading(true)
     statusCbRef.current?.({ state: "loading" })
-    renderMermaidSvg(chart)
+    renderMermaidSvg(chart, { themeMode: mermaidTheme })
       .then((out) => {
         if (cancelled) return
         setSvg(out)
@@ -118,7 +127,7 @@ export function MermaidCanvas({
         if (!cancelled) setRenderLoading(false)
       })
     return () => { cancelled = true }
-  }, [chart])
+  }, [chart, mermaidTheme])
 
   // Fit the diagram to the viewport — sizes the SVG so it fills the
   // visible canvas with a bit of padding, then centres it.

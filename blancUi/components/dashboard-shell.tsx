@@ -238,7 +238,7 @@ export function PageHero({
             animate={{ scale: 1, rotate: 0, opacity: 1 }}
             transition={{
               delay: 0.05,
-              type: "spring",
+              type: "spring" as const,
               stiffness: 260,
               damping: 18,
             }}

@@ -18,6 +18,14 @@ RUN if [ -f package-lock.json ]; then \
 
 COPY . .
 
+# `NEXT_PUBLIC_*` vars are inlined into the client bundle at build time.
+# Compose passes this via `build.args`; declare the ARG here so it lands
+# in the shell environment `npm run build` sees. Without ARG + ENV, the
+# client bundle ships with `undefined` for the API base and every fetch
+# from the browser 404s.
+ARG NEXT_PUBLIC_API_BASE_URL=http://localhost:8000
+ENV NEXT_PUBLIC_API_BASE_URL=$NEXT_PUBLIC_API_BASE_URL
+
 # Next.js standalone output (see next.config.ts → output: 'standalone').
 RUN npm run build && \
     cp -r .next/static .next/standalone/.next/static && \

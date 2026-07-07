@@ -8,7 +8,7 @@
 # Prereqs (bring your own):
 #   • MariaDB reachable per dbConfig.mariadbConnectionString
 #   • RabbitMQ reachable per rmqConfig.hosts
-#   • Secrets set in blancService/atm/config/local.yml (or OPENAI_API_KEY env)
+#   • Secrets set in blancService/atm/config/config.yml (or OPENAI_API_KEY env)
 #
 # Usage: ./native-run.sh
 
@@ -23,7 +23,7 @@ BOLD="\033[1m"; DIM="\033[2m"; GREEN="\033[32m"; RED="\033[31m"; RESET="\033[0m"
 die() { printf "\n${RED}✗ %s${RESET}\n" "$*" >&2; exit 1; }
 
 [[ -d "${VENV_DIR}" ]] || die "No venv at ${VENV_DIR}. Run ./native-build.sh first."
-[[ -f "${BACKEND_DIR}/atm/config/local.yml" ]] || die "Missing blancService/atm/config/local.yml — run ./native-build.sh."
+[[ -f "${BACKEND_DIR}/atm/config/config.yml" ]] || die "Missing blancService/atm/config/config.yml — run ./native-build.sh."
 [[ -d "${FRONTEND_DIR}/node_modules" ]] || die "No frontend node_modules. Run ./native-build.sh first."
 
 # Track child pids so Ctrl+C tears everything down.
@@ -41,7 +41,7 @@ trap cleanup EXIT INT TERM
 printf "${BOLD}==> Starting backend (uvicorn) on http://127.0.0.1:8000${RESET}\n"
 (
     cd "${BACKEND_DIR}"
-    export ENV="${ENV:-local}"
+    export ENV="${ENV:-config}"
     # Explicit path to the venv interpreter — `source activate` +
     # bare `python3` can silently reach for the wrong interpreter when
     # /opt/homebrew/bin is prepended by shell login hooks.

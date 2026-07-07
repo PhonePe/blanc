@@ -27,7 +27,6 @@ import {
 } from "@/components/ui/dialog";
 import { AssessmentForm } from "@/components/AssessmentForm";
 import { Label } from "@/components/ui/label";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
   Select,
   SelectContent,
@@ -43,7 +42,6 @@ import {
 } from "@/components/ui/tooltip";
 
 import { api } from "@/lib/api-client";
-import { ThreatModelInventory } from "@/components/threat-model-inventory";
 import { CodeEditor, type CodeEditorHandle } from "@/components/CodeEditor";
 import type { MermaidRenderStatus } from "@/components/MermaidCanvas";
 
@@ -117,7 +115,6 @@ export default function ATMStudioPage() {
 
   const [mermaidSource, setMermaidSource] = useState(sampleMermaid);
   const [renderedMermaid, setRenderedMermaid] = useState(sampleMermaid);
-  const [activeTab, setActiveTab] = useState<"diagram" | "inventory">("diagram");
   const [loaded, setLoaded] = useState<LoadedAssessment | null>(null);
   const [activeImageId, setActiveImageId] = useState<string | null>(null);
 
@@ -126,12 +123,6 @@ export default function ATMStudioPage() {
   const [renderStatus, setRenderStatus] = useState<MermaidRenderStatus>({ state: "idle" });
   const editorRef = useRef<CodeEditorHandle | null>(null);
 
-  // The active image drives BOTH the rendered Mermaid and the
-  // ThreatModelInventory's surface-map persistence target.
-  const activeImage = useMemo(() => {
-    if (!loaded || !activeImageId) return null;
-    return loaded.images.find((img) => img.image_id === activeImageId) ?? null;
-  }, [loaded, activeImageId]);
 
   const statusLabel = useMemo(() => {
     if (loaded) {
@@ -162,7 +153,6 @@ export default function ATMStudioPage() {
       return;
     }
     setRenderedMermaid(source);
-    setActiveTab("diagram");
   }, [mermaidSource]);
 
   const clearStudio = useCallback(() => {
@@ -281,19 +271,10 @@ export default function ATMStudioPage() {
           </div>
         </div>
 
-        {/* --- Split Layout: editor | canvas + inventory ---
-            The Mermaid editor only shows on the Diagram tab so the
-            ThreatModeller Inventory can use the full canvas width. */}
-        <div
-          className={
-            activeTab === "diagram"
-              ? "grid min-h-0 flex-1 grid-cols-1 lg:grid-cols-[420px_minmax(0,1fr)]"
-              : "grid min-h-0 flex-1 grid-cols-1"
-          }
-        >
-          {/* Left: Mermaid editor (Diagram tab only) */}
-          {activeTab === "diagram" && (
-            <aside className="min-h-0 border-b bg-card/30 lg:border-b-0 lg:border-r">
+        {/* --- Split Layout: editor | canvas --- */}
+        <div className="grid min-h-0 flex-1 grid-cols-1 lg:grid-cols-[420px_minmax(0,1fr)]">
+          {/* Left: Mermaid editor */}
+          <aside className="min-h-0 border-b bg-card/30 lg:border-b-0 lg:border-r">
               <div className="flex h-full flex-col gap-3 p-4">
                 <div className="flex items-center justify-between gap-3">
                   <div className="flex items-center gap-2 text-sm font-semibold">
@@ -385,67 +366,22 @@ export default function ATMStudioPage() {
                 </Button>
               </div>
             </aside>
-          )}
 
-          {/* Right: Diagram canvas + Inventory tabs */}
+          {/* Right: Diagram canvas */}
           <section className="min-h-0 bg-muted/20 p-3">
-            <Tabs
-              value={activeTab}
-              onValueChange={(value) =>
-                setActiveTab(value as "diagram" | "inventory")
-              }
-              className="flex h-full min-h-0 flex-col gap-3"
-            >
-              <TabsList className="self-start">
-                <TabsTrigger value="diagram">Diagram</TabsTrigger>
-                <TabsTrigger value="inventory">
-                  ThreatModeller Inventory
-                  {loaded && (
-                    <Badge
-                      variant="secondary"
-                      className="ml-2 h-5 px-1.5 text-[10px]"
-                    >
-                      live
-                    </Badge>
-                  )}
-                </TabsTrigger>
-              </TabsList>
-
-              <TabsContent
-                value="diagram"
-                className="min-h-0 flex-1 overflow-hidden rounded-md border bg-background shadow-sm"
-              >
-                {renderedMermaid ? (
-                  <MermaidCanvas
-                    chart={renderedMermaid}
-                    className="h-full"
-                    onStatusChange={setRenderStatus}
-                  />
-                ) : (
-                  <div className="flex h-full min-h-[420px] items-center justify-center text-sm text-muted-foreground">
-                    Paste Mermaid JS on the left and click Render Diagram.
-                  </div>
-                )}
-              </TabsContent>
-
-              <TabsContent
-                value="inventory"
-                className="min-h-0 flex-1 overflow-auto"
-              >
-                <ThreatModelInventory
-                  code={renderedMermaid}
-                  // Local-only persistence key keeps inventories from leaking
-                  // across assessment IDs in sandbox mode.
-                  persistKey={
-                    loaded && activeImage
-                      ? `atmstudio:${loaded.id}:${activeImage.image_id}`
-                      : "atmstudio:sandbox"
-                  }
-                  assessmentId={loaded?.id}
-                  imageId={activeImage?.image_id}
+            <div className="h-full min-h-0 overflow-hidden rounded-md border bg-background shadow-sm">
+              {renderedMermaid ? (
+                <MermaidCanvas
+                  chart={renderedMermaid}
+                  className="h-full"
+                  onStatusChange={setRenderStatus}
                 />
-              </TabsContent>
-            </Tabs>
+              ) : (
+                <div className="flex h-full min-h-[420px] items-center justify-center text-sm text-muted-foreground">
+                  Paste Mermaid JS on the left and click Render Diagram.
+                </div>
+              )}
+            </div>
           </section>
         </div>
       </main>

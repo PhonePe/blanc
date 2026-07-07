@@ -10,7 +10,7 @@ Resolution order (highest priority first):
 
     1. ``ATM_CONFIG_PATH`` env var  → absolute path to any YAML file.
     2. ``ENV`` env var              → picks ``atm/config/<env>.yml``
-                                       (default: ``local``).
+                                       (default: ``config`` → ``config.yml``).
 
 Environment-variable expansion
 ------------------------------
@@ -47,7 +47,7 @@ log = logging.getLogger(__name__)
 
 _PACKAGE_ROOT = Path(__file__).resolve().parent.parent
 _CONFIG_DIR = _PACKAGE_ROOT / "config"
-_DEFAULT_ENV = "local"
+_DEFAULT_ENV = "config"
 
 # Matches ${VAR} and ${VAR:-fallback}. The fallback may contain any char
 # except a closing brace, which matches shell semantics closely enough

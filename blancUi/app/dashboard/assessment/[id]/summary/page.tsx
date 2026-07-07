@@ -640,7 +640,7 @@ export default function AssessmentSummaryPage() {
                     onClick={() => setActiveImageIdx(idx)}
                     whileHover={{ y: -1 }}
                     whileTap={{ scale: 0.97 }}
-                    transition={{ type: "spring", stiffness: 400, damping: 28 }}
+                    transition={{ type: "spring" as const, stiffness: 400, damping: 28 }}
                     className={cn(
                       "relative inline-flex shrink-0 items-center gap-2 overflow-hidden rounded-lg border px-2.5 py-1.5 text-left transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
                       isActive
@@ -653,7 +653,7 @@ export default function AssessmentSummaryPage() {
                         layoutId="image-selector-active"
                         aria-hidden
                         className="pointer-events-none absolute inset-0 rounded-lg ring-1 ring-primary/30"
-                        transition={{ type: "spring", stiffness: 400, damping: 32 }}
+                        transition={{ type: "spring" as const, stiffness: 400, damping: 32 }}
                       />
                     )}
                     <div
@@ -837,7 +837,7 @@ export default function AssessmentSummaryPage() {
                         <motion.div
                           initial={{ rotate: -8, scale: 0.85, opacity: 0 }}
                           animate={{ rotate: 0, scale: 1, opacity: 1 }}
-                          transition={{ delay: 0.2, type: "spring", stiffness: 220, damping: 16 }}
+                          transition={{ delay: 0.2, type: "spring" as const, stiffness: 220, damping: 16 }}
                           className="grid size-10 shrink-0 place-items-center rounded-xl bg-linear-to-br from-amber-500/15 via-orange-500/10 to-rose-500/10 text-amber-600 ring-1 ring-amber-500/20 dark:text-amber-300"
                         >
                           <MessageCircleQuestion size={18} />
@@ -852,7 +852,7 @@ export default function AssessmentSummaryPage() {
                                   initial={{ scale: 0.6, opacity: 0 }}
                                   animate={{ scale: 1, opacity: 1 }}
                                   exit={{ scale: 0.6, opacity: 0 }}
-                                  transition={{ type: "spring", stiffness: 380, damping: 22 }}
+                                  transition={{ type: "spring" as const, stiffness: 380, damping: 22 }}
                                 >
                                   <Badge className="h-5 rounded-full bg-amber-500 px-1.5 text-[10px] tabular-nums text-white hover:bg-amber-500">
                                     {unansweredCount} unanswered
@@ -865,7 +865,7 @@ export default function AssessmentSummaryPage() {
                                   initial={{ scale: 0.6, opacity: 0 }}
                                   animate={{ scale: 1, opacity: 1 }}
                                   exit={{ scale: 0.6, opacity: 0 }}
-                                  transition={{ type: "spring", stiffness: 380, damping: 22 }}
+                                  transition={{ type: "spring" as const, stiffness: 380, damping: 22 }}
                                 >
                                   <Badge className="h-5 gap-1 rounded-full bg-emerald-500 px-1.5 text-[10px] text-white hover:bg-emerald-500">
                                     <CheckCircle2 size={11} />
@@ -995,7 +995,7 @@ export default function AssessmentSummaryPage() {
                                   <motion.div
                                     layout
                                     transition={{
-                                      type: "spring",
+                                      type: "spring" as const,
                                       stiffness: 380,
                                       damping: 24,
                                     }}
@@ -1013,7 +1013,7 @@ export default function AssessmentSummaryPage() {
                                           initial={{ scale: 0.4, opacity: 0, rotate: -20 }}
                                           animate={{ scale: 1, opacity: 1, rotate: 0 }}
                                           exit={{ scale: 0.4, opacity: 0 }}
-                                          transition={{ type: "spring", stiffness: 420, damping: 22 }}
+                                          transition={{ type: "spring" as const, stiffness: 420, damping: 22 }}
                                         >
                                           <Check size={15} strokeWidth={3} />
                                         </motion.span>

@@ -5,6 +5,7 @@ import dynamic from "next/dynamic"
 import { useParams, useRouter } from "next/navigation"
 import { motion, AnimatePresence } from "framer-motion"
 import { renderMermaidSvg } from "@/lib/mermaid"
+import { useTheme } from "next-themes"
 
 import {
   Loader2, FileCode2, MessageSquareText, Check,
@@ -367,7 +368,7 @@ const SidebarPanel = ({ assessmentState, currentStage, images, activeImageIdx, o
                 <motion.div
                   initial={false}
                   animate={{ width: `${railProgressPct}%` }}
-                  transition={{ type: "spring", stiffness: 120, damping: 24 }}
+                  transition={{ type: "spring" as const, stiffness: 120, damping: 24 }}
                   className={cn(
                     "pointer-events-none absolute top-[21px] h-2 overflow-hidden rounded-full bg-linear-to-r shadow-[0_0_18px_-5px_currentColor]",
                     effectiveState === "FAILED"
@@ -591,7 +592,7 @@ const FailedModal = ({ open, onClose, onRetry, isRetrying, errorMessage }: {
         <motion.div
           initial={{ opacity: 0, scale: 0.95, y: 10 }} animate={{ opacity: 1, scale: 1, y: 0 }}
           exit={{ opacity: 0, scale: 0.95, y: 10 }}
-          transition={{ type: "spring", damping: 30, stiffness: 400 }}
+          transition={{ type: "spring" as const, damping: 30, stiffness: 400 }}
           className="bg-background rounded-lg shadow-lg max-w-md w-full overflow-hidden border border-border"
           onClick={(e) => e.stopPropagation()}>
           <div className="flex items-center justify-between border-b border-border px-5 py-4">
@@ -2433,6 +2434,8 @@ const ThreatModelInventory = ({ code, persistKey, assessmentId, imageId }: { cod
 
 // --- Mermaid Diagram Editor ---
 const DiagramEditor = ({ code, onCodeChange, persistKey, assessmentId }: { code: string; onCodeChange: (v: string) => void; persistKey?: string; assessmentId?: string }) => {
+  const { resolvedTheme } = useTheme()
+  const mermaidTheme: "light" | "dark" = resolvedTheme === "dark" ? "dark" : "light"
   const [svg, setSvg] = useState("")
   const [copied, setCopied] = useState(false)
   const [renderError, setRenderError] = useState<string | null>(null)
@@ -2483,74 +2486,13 @@ const DiagramEditor = ({ code, onCodeChange, persistKey, assessmentId }: { code:
     const render = async () => {
       try {
         setRenderError(null)
-        const isDark = typeof document !== "undefined" && document.documentElement.classList.contains("dark")
-
+        // Palette selection now lives in @/lib/mermaid — one source of
+        // truth for light / dark theme variables. Pass the resolved
+        // theme so we don't rely on the `.dark` class being present at
+        // render time (avoids flash on hydration).
         const svg = await renderMermaidSvg(code, {
-          theme: "base",
+          themeMode: mermaidTheme,
           fontFamily: "Inter, system-ui, sans-serif",
-          themeVariables: isDark
-            ? {
-                background: "#0d1117",
-                mainBkg: "#0d1117",
-                primaryColor: "#161b22",
-                primaryBorderColor: "#c9d1d9",
-                primaryTextColor: "#e6edf3",
-                secondaryColor: "#161b22",
-                secondaryBorderColor: "#6e7681",
-                tertiaryColor: "#21262d",
-                nodeBorder: "#c9d1d9",
-                textColor: "#e6edf3",
-                lineColor: "#cbd5e1",
-                edgeLabelBackground: "#0d1117",
-                clusterBkg: "#161b22",
-                clusterBorder: "#6e7681",
-                actorBkg: "#161b22",
-                actorBorder: "#c9d1d9",
-                actorTextColor: "#e6edf3",
-                actorLineColor: "#cbd5e1",
-                signalColor: "#cbd5e1",
-                signalTextColor: "#e6edf3",
-                labelBoxBkgColor: "#161b22",
-                labelBoxBorderColor: "#6e7681",
-                labelTextColor: "#e6edf3",
-                loopTextColor: "#e6edf3",
-                noteBkgColor: "#fde68a",
-                noteBorderColor: "#f59e0b",
-                noteTextColor: "#1a1200",
-                activationBkgColor: "#fde68a",
-                activationBorderColor: "#f59e0b",
-              }
-            : {
-                background: "#ffffff",
-                mainBkg: "#ffffff",
-                primaryColor: "#f6f8fa",
-                primaryBorderColor: "#d0d7de",
-                primaryTextColor: "#1f2328",
-                secondaryColor: "#f6f8fa",
-                secondaryBorderColor: "#d0d7de",
-                tertiaryColor: "#eaeef2",
-                nodeBorder: "#d0d7de",
-                textColor: "#1f2328",
-                lineColor: "#64748b",
-                edgeLabelBackground: "#ffffff",
-                clusterBkg: "#f6f8fa",
-                clusterBorder: "#d0d7de",
-                actorBkg: "#f6f8fa",
-                actorBorder: "#d0d7de",
-                actorTextColor: "#1f2328",
-                actorLineColor: "#64748b",
-                signalColor: "#64748b",
-                signalTextColor: "#1f2328",
-                labelBoxBkgColor: "#f6f8fa",
-                labelBoxBorderColor: "#d0d7de",
-                labelTextColor: "#1f2328",
-                loopTextColor: "#1f2328",
-                noteBkgColor: "#fefce8",
-                noteBorderColor: "#f59e0b",
-                noteTextColor: "#1a1200",
-                activationBkgColor: "#fde68a",
-                activationBorderColor: "#f59e0b",
-              },
         })
 
         setSvg(svg)
@@ -2560,7 +2502,7 @@ const DiagramEditor = ({ code, onCodeChange, persistKey, assessmentId }: { code:
     }
     const timeout = setTimeout(render, 400)
     return () => clearTimeout(timeout)
-  }, [code])
+  }, [code, mermaidTheme])
 
   return (
     <div className="space-y-3">

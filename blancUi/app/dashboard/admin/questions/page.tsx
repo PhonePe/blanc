@@ -385,7 +385,7 @@ export default function QuestionsAdminPage() {
                 initial={{ opacity: 0, scale: 0.85, rotate: -6 }}
                 animate={{ opacity: 1, scale: 1, rotate: 0 }}
                 transition={{
-                  type: "spring",
+                  type: "spring" as const,
                   stiffness: 280,
                   damping: 18,
                   delay: 0.1,
@@ -533,7 +533,7 @@ export default function QuestionsAdminPage() {
                         <motion.span
                           layoutId="entity-active"
                           transition={{
-                            type: "spring",
+                            type: "spring" as const,
                             stiffness: 360,
                             damping: 30,
                           }}
@@ -1137,7 +1137,7 @@ export default function QuestionsAdminPage() {
                             <motion.span
                               layoutId="cat-entity-active"
                               transition={{
-                                type: "spring",
+                                type: "spring" as const,
                                 stiffness: 360,
                                 damping: 30,
                               }}

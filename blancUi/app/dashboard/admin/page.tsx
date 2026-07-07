@@ -150,7 +150,7 @@ function AdminTile({
             <div className="flex items-start justify-between">
               <motion.div
                 whileHover={{ rotate: -4, scale: 1.06 }}
-                transition={{ type: "spring", stiffness: 300, damping: 16 }}
+                transition={{ type: "spring" as const, stiffness: 300, damping: 16 }}
                 className={cn(
                   "relative grid size-11 place-items-center rounded-xl text-white shadow-md ring-1 ring-white/15 bg-linear-to-br",
                   a.plate,

@@ -6,13 +6,13 @@
 #   2. Creates a Python venv under blancService/env and installs requirements —
 #      this includes PaddleOCR + paddlepaddle + opencv-python-headless.
 #   3. Installs the frontend's node_modules.
-#   4. Copies blancService/atm/config/local.yml.example -> local.yml if the
+#   4. Copies blancService/atm/config/config.yml.example -> config.yml if the
 #      real config doesn't exist yet, so the app can boot.
 #
 # What this does NOT do:
 #   * Install MariaDB / RabbitMQ — bring your own, or use `docker compose up
 #     mariadb rabbitmq` from the compose file.
-#   * Populate secrets — edit blancService/atm/config/local.yml after this
+#   * Populate secrets — edit blancService/atm/config/config.yml after this
 #     script finishes, or export OPENAI_API_KEY / JWT_SECRET_KEY in your
 #     shell before running native-run.sh.
 #
@@ -36,14 +36,30 @@ die()  { printf "\n${RED}✗ %s${RESET}\n" "$*" >&2; exit 1; }
 # ── 1. Prereqs ───────────────────────────────────────────────────────
 step "Checking prerequisites"
 
-command -v python3 >/dev/null 2>&1 || die "python3 not found. Install Python 3.12+ and re-run."
-PYTHON_VERSION=$(python3 -c 'import sys; print(f"{sys.version_info.major}.{sys.version_info.minor}")')
-PYTHON_MAJOR=$(echo "$PYTHON_VERSION" | cut -d. -f1)
-PYTHON_MINOR=$(echo "$PYTHON_VERSION" | cut -d. -f2)
-if [[ "$PYTHON_MAJOR" -lt 3 ]] || { [[ "$PYTHON_MAJOR" -eq 3 ]] && [[ "$PYTHON_MINOR" -lt 12 ]]; }; then
-    die "Python 3.12+ required (found ${PYTHON_VERSION}). PaddlePaddle wheels target 3.10-3.12."
+# Pin to Python 3.12. PaddlePaddle only ships wheels for 3.10-3.12, and on
+# 3.13+ the `pip install -r requirements.txt` step fails with an opaque
+# "no matching distribution" error deep into the paddle install. Rather
+# than let users discover that halfway through, resolve to a 3.12
+# interpreter up front — prefer an explicit `python3.12` binary if the
+# user has one alongside a newer default python3.
+if command -v python3.12 >/dev/null 2>&1; then
+    PYTHON_BIN="$(command -v python3.12)"
+elif command -v python3 >/dev/null 2>&1; then
+    PYTHON_BIN="$(command -v python3)"
+else
+    die "python3 not found. Install Python 3.12 (\`brew install python@3.12\` on macOS, \`apt install python3.12 python3.12-venv\` on Debian/Ubuntu) and re-run."
 fi
-ok "Python ${PYTHON_VERSION}"
+
+PYTHON_VERSION=$("${PYTHON_BIN}" -c 'import sys; print(f"{sys.version_info.major}.{sys.version_info.minor}")')
+if [[ "${PYTHON_VERSION}" != "3.12" ]]; then
+    printf "  ${DIM}Resolved python at ${PYTHON_BIN} (version ${PYTHON_VERSION}).${RESET}\n"
+    die "Python 3.12 required (found ${PYTHON_VERSION}). PaddlePaddle wheels only target 3.10-3.12; 3.13+ has no wheel and building from source is not supported. Install 3.12 alongside your current version:
+      • macOS:         brew install python@3.12
+      • Debian/Ubuntu: sudo apt install -y python3.12 python3.12-venv
+      • pyenv:         pyenv install 3.12 && pyenv local 3.12
+    Then re-run ./native-build.sh."
+fi
+ok "Python ${PYTHON_VERSION} at ${PYTHON_BIN}"
 
 command -v node >/dev/null 2>&1 || die "node not found. Install Node.js 20+ and re-run."
 NODE_MAJOR=$(node -v | sed -E 's/v([0-9]+).*/\1/')
@@ -78,10 +94,23 @@ esac
 step "Setting up backend virtualenv"
 
 if [[ ! -d "${VENV_DIR}" ]]; then
-    python3 -m venv "${VENV_DIR}"
-    ok "Created venv at ${VENV_DIR#${REPO_ROOT}/}"
+    # Use the resolved 3.12 interpreter — NOT bare `python3`. A shell
+    # whose $PATH is Homebrew-first may have `python3` pointing at 3.13
+    # even after we resolved 3.12 above via `command -v python3.12`,
+    # so we build the venv off the pinned path.
+    "${PYTHON_BIN}" -m venv "${VENV_DIR}"
+    ok "Created venv at ${VENV_DIR#${REPO_ROOT}/} (Python ${PYTHON_VERSION})"
 else
-    ok "Reusing existing venv at ${VENV_DIR#${REPO_ROOT}/}"
+    # Guard against a stale venv left behind by an earlier 3.13 run —
+    # otherwise we'd cheerfully reuse it and pip would then fail on the
+    # paddle wheel with a misleading error.
+    EXISTING_PYVER=$("${VENV_DIR}/bin/python3" -c 'import sys; print(f"{sys.version_info.major}.{sys.version_info.minor}")' 2>/dev/null || echo "unknown")
+    if [[ "${EXISTING_PYVER}" != "3.12" ]]; then
+        die "Existing venv at ${VENV_DIR#${REPO_ROOT}/} was built with Python ${EXISTING_PYVER}, not 3.12. Delete it and re-run:
+      rm -rf ${VENV_DIR#${REPO_ROOT}/}
+      ./native-build.sh"
+    fi
+    ok "Reusing existing venv at ${VENV_DIR#${REPO_ROOT}/} (Python ${EXISTING_PYVER})"
 fi
 
 # Use the venv's interpreter and pip directly rather than relying on
@@ -129,7 +158,7 @@ if [[ "${INSTALL_SBERT:-}" == "1" ]]; then
 else
     warn "sentence-transformers not installed (adds ~2 GB with torch)."
     printf "      Local RAG needs it. Rerun with ${DIM}INSTALL_SBERT=1 ./native-build.sh${RESET}\n"
-    printf "      Or set ${DIM}rag_config.embedder.provider: 'openai'${RESET} in local.yml.\n"
+    printf "      Or set ${DIM}rag_config.embedder.provider: 'openai'${RESET} in config.yml.\n"
 fi
 
 # ── 3. Frontend deps ─────────────────────────────────────────────────
@@ -147,22 +176,22 @@ ok "Frontend dependencies installed"
 # ── 4. Config bootstrap ──────────────────────────────────────────────
 step "Bootstrapping config"
 
-if [[ ! -f "${CONFIG_DIR}/local.yml" ]]; then
-    cp "${CONFIG_DIR}/local.yml.example" "${CONFIG_DIR}/local.yml"
-    ok "Copied local.yml.example → local.yml"
-    warn "Edit ${CONFIG_DIR#${REPO_ROOT}/}/local.yml before running:"
+if [[ ! -f "${CONFIG_DIR}/config.yml" ]]; then
+    cp "${CONFIG_DIR}/config.yml.example" "${CONFIG_DIR}/config.yml"
+    ok "Copied config.yml.example → config.yml"
+    warn "Edit ${CONFIG_DIR#${REPO_ROOT}/}/config.yml before running:"
     printf "      • jwt_config.secret_key → local dev fallback is included; export ${DIM}JWT_SECRET_KEY${RESET} for shared/deployed use\n"
     printf "      • google_auth.client_id / client_secret → from Google Cloud Console\n"
     printf "      • openaiconfig.openai_url + set ${DIM}OPENAI_API_KEY${RESET} env var\n"
     printf "      • dbConfig.mariadbConnectionString → your MariaDB\n"
     printf "      • rmqConfig.hosts → your RabbitMQ\n"
 else
-    ok "local.yml already exists — leaving untouched"
+    ok "config.yml already exists — leaving untouched"
 fi
 
 # ── Done ─────────────────────────────────────────────────────────────
 printf "\n${BOLD}${GREEN}✓ Build complete.${RESET}\n\n"
 printf "Next steps:\n"
 printf "  1. Start MariaDB + RabbitMQ (or run: ${DIM}docker compose up -d mariadb rabbitmq${RESET})\n"
-printf "  2. Verify secrets in ${DIM}blancService/atm/config/local.yml${RESET}\n"
+printf "  2. Verify secrets in ${DIM}blancService/atm/config/config.yml${RESET}\n"
 printf "  3. Run the stack: ${DIM}./native-run.sh${RESET}\n\n"

@@ -14,10 +14,10 @@
 ![PRs welcome](https://img.shields.io/badge/PRs-welcome-FFFFFF?style=for-the-badge&labelColor=555555)
 
 <br/>
-
+<!-- 
 [![Join Discord](https://img.shields.io/badge/Join-Discord-5865F2?style=for-the-badge&logo=discord&logoColor=FFFFFF&labelColor=555555)](https://discord.gg/)
 &nbsp;
-[![Read the Docs](https://img.shields.io/badge/Read-the%20Docs-FFFFFF?style=for-the-badge&logo=readthedocs&logoColor=FFFFFF&labelColor=555555)](blancService/CODEBASE_DOCUMENTATION.md)
+[![Read the Docs](https://img.shields.io/badge/Read-the%20Docs-FFFFFF?style=for-the-badge&logo=readthedocs&logoColor=FFFFFF&labelColor=555555)](blancService/CODEBASE_DOCUMENTATION.md) -->
 
 <br/>
 
@@ -44,7 +44,15 @@ Blanc. aims to shift threat modeling from a manual workshop-driven activity into
 - Add custom rags and connectors based on what your organization uses
 - Works with free models with open-ai support
 
-![Blanc Studio preview — New Assessment · ATM Studio · Admin Panel · Assessments](assets/blanc-preview.svg)
+<div align="center">
+  <table>
+    <tr>
+      <td>
+        <img src="assets/blanc-website.gif" alt="Blanc in action" width="900" />
+      </td>
+    </tr>
+  </table>
+</div>
 
 ## Why Blanc.?
 
@@ -93,15 +101,26 @@ Blanc has two components — a FastAPI backend (`blancService/`) and a Next.js s
 
 ### Run via Docker Compose (recommended)
 
-The bundled `docker-compose.yml` brings up MariaDB, RabbitMQ, the FastAPI backend, and the Next.js studio in one shot:
+The bundled `docker-compose.yml` brings up MariaDB, RabbitMQ, the FastAPI backend, and the Next.js studio in one shot. All configuration lives in a single YAML file — no `.env` needed.
 
 ```bash
 git clone https://github.com/blanc-project/blanc.git
 cd blanc
+
+# 1. Create your config from the example.
+cp blancService/atm/config/docker.yml.example \
+   blancService/atm/config/docker.yml
+
+# 2. Edit blancService/atm/config/docker.yml
+#    — set openaiconfig.api_key, jwt_config.secret_key, admin_users, etc.
+
+# 3. Bring the stack up.
 docker compose up --build
 ```
 
-> The studio talks to the backend at `http://localhost:8000` by default. Update the API base URL in [blancUi/lib/api-client.ts](blancUi/lib/api-client.ts) if you're running the services on different hosts.
+`docker.yml` is mounted read-only into the api container and is the single source of truth for OpenAI keys, JWT secrets, Google OAuth, admin emails, and the DB / RabbitMQ connection strings. It's gitignored — don't commit it.
+
+> The studio talks to the backend at `http://localhost:8000` by default. Update `NEXT_PUBLIC_API_BASE_URL` in [docker-compose.yml](docker-compose.yml) (under the `ui` service's `build.args`) if you're serving the api on a different host.
 
 ### Run locally
 
@@ -114,7 +133,7 @@ cd blancService
 python3.12 -m venv env
 source env/bin/activate
 pip install -r requirements.txt
-ENV=local python3 main.py
+python3 main.py   # loads blancService/atm/config/config.yml by default
 
 # Studio (in a second terminal)
 cd ../blancUi

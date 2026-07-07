@@ -1,4 +1,5 @@
 import logging
+import os
 import uvicorn
 from fastapi import FastAPI
 from atm.routers import assessment_router, auth_router
@@ -61,8 +62,30 @@ async def _harden_uploads_response(request, call_next):
     return response
 
 
-#mount static files for uploaded documents
-app.mount("/uploads", StaticFiles(directory="uploads"), name="uploads")
+# Mount static files for uploaded documents. The directory has to exist
+# BEFORE StaticFiles wraps it — on a fresh checkout it won't, so create
+# it up front from whatever `storage.local_upload_dir` says (default:
+# "uploads"). Idempotent — existing directories are left alone.
+UPLOADS_DIR = config.storage.local_upload_dir or "uploads"
+os.makedirs(UPLOADS_DIR, exist_ok=True)
+
+# Fail fast if the directory exists but is unwritable — otherwise the
+# first upload dies with a cryptic PermissionError deep inside starlette
+# after the user has already picked a file. Common in Docker when a
+# host volume is mounted with the wrong ownership.
+_probe = os.path.join(UPLOADS_DIR, ".write_probe")
+try:
+    with open(_probe, "w") as _f:
+        _f.write("")
+    os.remove(_probe)
+except OSError as e:
+    raise RuntimeError(
+        f"Uploads directory {UPLOADS_DIR!r} is not writable by this "
+        f"process ({e}). Check ownership / permissions — on Docker, "
+        "the api container runs as uid=10001 (user 'atm')."
+    ) from e
+
+app.mount("/uploads", StaticFiles(directory=UPLOADS_DIR), name="uploads")
 # Start background consumer
 threadedConsumerWrapper = ThreadedConsumerWrapper()
 threadedConsumerWrapper.start()

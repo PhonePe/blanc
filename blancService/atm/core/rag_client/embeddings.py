@@ -149,7 +149,7 @@ class OpenAIEmbedder(Embedder):
                 f"OpenAI embeddings selected but neither "
                 f"rag_config.embedder.api_key nor the env var "
                 f"${self.api_key_env} is set. Either put the key in your "
-                f"local.yml:\n"
+                f"config.yml:\n"
                 f"  rag_config.embedder.api_key: \"sk-...\"\n"
                 f"or export it in the shell that runs the backend:\n"
                 f"  export {self.api_key_env}=\"sk-...\"\n"

@@ -96,7 +96,7 @@ class RAGEmbedderConfig(BaseModel):
         neither               →  the OpenAI embedder refuses to load
 
     Direct ``api_key`` in the YAML is convenient for local dev — the
-    example ``local.yml`` is gitignored — but for anything shared or
+    example ``config.yml`` is gitignored — but for anything shared or
     deployed, prefer the env var approach so keys don't sit in a
     config file that might be committed by accident.
     """

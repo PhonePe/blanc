@@ -11,5 +11,4 @@ class AppOnboardResponse(BaseModel):
     org_id: str
     status: str
 
-    class Config:
-        orm_mode = True
+    model_config = {"from_attributes": True}

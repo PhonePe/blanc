@@ -113,7 +113,7 @@ blancService/
 │   │       └── threat_modeling_schema.py  # (Empty, schemas in ai_response.py)
 │   │
 │   ├── config/
-│   │   └── local.yml                # Local dev configuration
+│   │   └── config.yml               # Default configuration (gitignored)
 │   │
 │   ├── config_parsers/              # Configuration management
 │   │   ├── config_client.py         # Singleton config provider
@@ -236,9 +236,10 @@ async def recover_stuck_tasks():
 ### 5.1 Config Provider (`config_parsers/config_client.py`)
 
 Singleton pattern — loads config based on `ENV` environment variable:
-- `local` → reads `atm/config/local.yml`
-- `stage` → reads from stage config path
-- unset/unknown → reads `atm/config/local.yml`
+- `config` → reads `atm/config/config.yml` (default when `ENV` is unset)
+- `docker` → reads `atm/config/docker.yml` (used by the compose entrypoint)
+- Any other `ENV=<name>` → reads `atm/config/<name>.yml`
+- `ATM_CONFIG_PATH=/abs/path.yml` overrides both of the above
 
 ### 5.2 Config Models (`config_parsers/config_models.py`)
 
@@ -256,7 +257,7 @@ All models are Pydantic `BaseModel` subclasses:
 | `DBConf` | `mariadbConnectionString`, `poolSize`, `poolRecycle`, `maxOverflow` |
 | `RMQConf` | `hosts`, `port`, `username`, `password`, `queues[]` |
 
-### 5.3 Local Configuration Summary (`config/local.yml`)
+### 5.3 Configuration Summary (`config/config.yml`)
 
 | Section | Value |
 |---------|-------|

@@ -178,7 +178,7 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
               <Link href="/dashboard/assessment/new">
                 <span
                   className={cn(
-                    "relative flex aspect-square size-8 items-center justify-center overflow-hidden rounded-lg bg-black",
+                    "relative flex aspect-square size-8 shrink-0 items-center justify-center overflow-hidden rounded-lg bg-black",
                     "shadow-[0_1px_0_0_rgba(255,255,255,0.06)_inset,0_3px_10px_-3px_rgba(0,0,0,0.45)]",
                     "ring-1 ring-black/80 dark:ring-white/15",
                   )}
@@ -189,7 +189,7 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
                     width={32}
                     height={32}
                     priority
-                    className="size-full object-cover"
+                    className="size-full object-contain"
                   />
                 </span>
                 <div className="grid flex-1 text-left leading-tight">

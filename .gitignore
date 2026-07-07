@@ -7,11 +7,6 @@
 .vscode/
 *.swp
 
-# Env / secrets
-.env
-.env.*
-!.env.example
-
 # Python
 __pycache__/
 *.pyc
@@ -26,5 +21,7 @@ node_modules/
 out/
 build/
 
-# Local config (copy the .example and fill in your own values)
-local.yml
+# Config files hold real secrets (OpenAI, JWT, DB creds). Users copy
+# the .example sibling and fill it in — never commit the real file.
+config.yml
+docker.yml

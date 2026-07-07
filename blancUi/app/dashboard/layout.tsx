@@ -18,6 +18,7 @@ export default function Layout({
   return (
     <AuthProvider>
       <SidebarProvider
+        defaultOpen={false}
         style={
           {
             "--sidebar-width": "16rem",

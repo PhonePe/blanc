@@ -505,6 +505,24 @@ class AssessmentService:
         if analysis.flow_diagram and isinstance(analysis.flow_diagram, dict):
             mermaid_text = analysis.flow_diagram.get("mermaid", "")
 
+        # Load the analyst-curated surface_map once and format it for the
+        # prompt. Every question in this batch gets the same rendering,
+        # so do it up front. Missing / broken surface_map is non-fatal —
+        # the formatter emits a sentinel and the LLM falls back to the
+        # mermaid diagram.
+        from atm.crud import surface_map_crud
+        from atm.core.document_analysis import format_surface_map_for_prompt
+        surface_map_str = "(no curated surface map available — fall back to the mermaid diagram)"
+        try:
+            sm_row = surface_map_crud.get_surface_map(db, assessment_id, image_id)
+            if sm_row and sm_row.surface_map:
+                surface_map_str = format_surface_map_for_prompt(sm_row.surface_map)
+        except Exception as sm_err:
+            logging.warning(
+                f"[{assessment_id}][img:{image_id}] surface_map fetch for "
+                f"auto-answer failed: {sm_err}"
+            )
+
         vector_client = get_rag_client(config)
         namespace = config.rag_config.namespace
         collection_id = config.rag_config.collection_id
@@ -539,6 +557,7 @@ class AssessmentService:
                 prompt = get_skill("auto_answer_clarification").render(
                     rag_context=rag_context,
                     arch_text=mermaid_text or "(no architecture diagram available)",
+                    surface_map=surface_map_str,
                     question=question,
                 )
                 answer = await get_llm_client().acall_text(prompt)

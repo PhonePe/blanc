@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { cn } from "@/lib/utils";
 import { API_BASE } from "@/lib/api-client";
-import { motion, type Variants } from "framer-motion";
+import { motion, type Variants, type HTMLMotionProps } from "framer-motion";
 
 // UI Components
 import { Button } from "@/components/ui/button";
@@ -28,7 +28,7 @@ const itemVariants: Variants = {
   visible: { y: 0, opacity: 1, transition: { type: "spring", stiffness: 100 } }
 };
 
-export function RegisterForm({ className, ...props }: React.ComponentProps<"form">) {
+export function RegisterForm({ className, ...props }: HTMLMotionProps<"form">) {
   const router = useRouter();
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);

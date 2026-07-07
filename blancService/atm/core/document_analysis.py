@@ -280,9 +280,32 @@ def component_breakdown(arch_text: str, assessment_id: Optional[str] = None) -> 
     return response_obj.model_dump()
 
 
-def clarification_questions(arch_text: str, assessment_id: Optional[str] = None) -> Dict[str, List[str]]:
+def format_surface_map_for_prompt(surface_map: Optional[Dict[str, Any]]) -> str:
+    """Render a persisted surface_map JSON blob into a prompt-friendly string.
+
+    Returns a sentinel string when no curated inventory exists yet, so
+    the LLM knows to fall back on the mermaid diagram. The raw ``mermaid``
+    copy stored inside the surface_map is dropped — the caller already
+    passes the mermaid separately, and duplicating it wastes context.
+    """
+    if not surface_map or not isinstance(surface_map, dict):
+        return "(no curated surface map available — fall back to the mermaid diagram)"
+    trimmed = {k: v for k, v in surface_map.items() if k != "mermaid"}
+    if not trimmed:
+        return "(no curated surface map available — fall back to the mermaid diagram)"
+    return json.dumps(trimmed, ensure_ascii=False, indent=2)
+
+
+def clarification_questions(
+    arch_text: str,
+    surface_map: Optional[Dict[str, Any]] = None,
+    assessment_id: Optional[str] = None,
+) -> Dict[str, List[str]]:
     response_obj = get_llm_client().call(
-        get_skill("clarification_questions").render(arch_text=arch_text),
+        get_skill("clarification_questions").render(
+            arch_text=arch_text,
+            surface_map=format_surface_map_for_prompt(surface_map),
+        ),
         QuestionsResponse,
         assessment_id=assessment_id,
         purpose="clarification",
@@ -674,7 +697,28 @@ def analyze_single_image_phase_b(
         db.commit()
 
         transition_image(db, assessment_id, image_id, AssessmentState.PROCESSING, AssessmentStage.CLARIFICATION)
-        questions_data = clarification_questions(mermaid_string, assessment_id=assessment_id)
+
+        # Fold the analyst-curated surface map into the prompt so questions
+        # target *edited* trust boundaries / exposure levels, not the raw
+        # vision-model output. Non-fatal if the row is missing — the skill
+        # has a sentinel path for that.
+        from atm.crud import surface_map_crud  # local import: avoid cycles
+        surface_map_blob: Optional[Dict[str, Any]] = None
+        try:
+            sm_row = surface_map_crud.get_surface_map(db, assessment_id, image_id)
+            if sm_row and sm_row.surface_map:
+                surface_map_blob = sm_row.surface_map
+        except Exception as sm_err:
+            logging.warning(
+                f"[{assessment_id}][img:{image_id}] surface_map fetch for "
+                f"clarification failed: {sm_err}"
+            )
+
+        questions_data = clarification_questions(
+            mermaid_string,
+            surface_map=surface_map_blob,
+            assessment_id=assessment_id,
+        )
         analysis_record.clarification = questions_data
         db.commit()
 

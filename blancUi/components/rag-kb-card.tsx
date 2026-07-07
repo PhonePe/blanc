@@ -304,7 +304,7 @@ export function KBUploadCard({
                 animate={{ scale: 1, rotate: 0, opacity: 1 }}
                 transition={{
                   delay: 0.05 + index * 0.06,
-                  type: "spring",
+                  type: "spring" as const,
                   stiffness: 260,
                   damping: 18,
                 }}
@@ -387,7 +387,7 @@ export function KBUploadCard({
                 onDragOver={handleDragOver}
                 onDragLeave={handleDragLeave}
                 animate={{ scale: dragActive ? 1.01 : 1 }}
-                transition={{ type: "spring", stiffness: 300, damping: 22 }}
+                transition={{ type: "spring" as const, stiffness: 300, damping: 22 }}
                 className={cn(
                   "relative flex cursor-pointer flex-col items-center justify-center gap-3 overflow-hidden rounded-xl border-2 border-dashed p-8 text-center transition-colors",
                   dragActive
@@ -400,7 +400,7 @@ export function KBUploadCard({
                     y: dragActive ? -2 : 0,
                     scale: dragActive ? 1.05 : 1,
                   }}
-                  transition={{ type: "spring", stiffness: 280, damping: 18 }}
+                  transition={{ type: "spring" as const, stiffness: 280, damping: 18 }}
                   className={cn(
                     "relative grid size-12 place-items-center rounded-xl transition-colors",
                     dragActive

@@ -212,7 +212,7 @@ export default function CreateRagPage() {
             <motion.div
               initial={{ scale: 0.85, rotate: -8, opacity: 0 }}
               animate={{ scale: 1, rotate: 0, opacity: 1 }}
-              transition={{ delay: 0.05, type: "spring", stiffness: 260, damping: 18 }}
+              transition={{ delay: 0.05, type: "spring" as const, stiffness: 260, damping: 18 }}
               whileHover={{ rotate: -4, scale: 1.05 }}
               className="relative grid size-12 place-items-center rounded-2xl bg-linear-to-br from-indigo-500 via-indigo-500 to-violet-600 text-white shadow-md ring-1 ring-indigo-500/30"
             >
@@ -331,7 +331,7 @@ export default function CreateRagPage() {
                       animate={{
                         scale: dragActive ? 1.01 : 1,
                       }}
-                      transition={{ type: "spring", stiffness: 300, damping: 22 }}
+                      transition={{ type: "spring" as const, stiffness: 300, damping: 22 }}
                       className={cn(
                         "relative flex cursor-pointer flex-col items-center justify-center gap-3 overflow-hidden rounded-xl border-2 border-dashed p-8 text-center transition-colors",
                         dragActive
@@ -357,7 +357,7 @@ export default function CreateRagPage() {
                           y: dragActive ? -2 : 0,
                           scale: dragActive ? 1.05 : 1,
                         }}
-                        transition={{ type: "spring", stiffness: 280, damping: 18 }}
+                        transition={{ type: "spring" as const, stiffness: 280, damping: 18 }}
                         className={cn(
                           "relative grid size-12 place-items-center rounded-xl transition-colors",
                           dragActive

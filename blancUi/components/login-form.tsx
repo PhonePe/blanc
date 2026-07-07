@@ -5,7 +5,7 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { cn } from "@/lib/utils";
 import { API_BASE } from "@/lib/api-client";
-import { motion } from "framer-motion";
+import { motion, type HTMLMotionProps, type Variants } from "framer-motion";
 
 // UI Components
 import { Button } from "@/components/ui/button";
@@ -14,7 +14,7 @@ import { Label } from "@/components/ui/label";
 import { Loader2, Eye, EyeOff, Lock, Mail } from "lucide-react"; // Import a Google icon if you have one, or use a simple SVG
 import { Alert, AlertDescription } from "@/components/ui/alert";
 
-const containerVariants = {
+const containerVariants: Variants = {
   hidden: { opacity: 0 },
   visible: {
     opacity: 1,
@@ -22,12 +22,12 @@ const containerVariants = {
   }
 };
 
-const itemVariants = {
+const itemVariants: Variants = {
   hidden: { y: 20, opacity: 0 },
   visible: { y: 0, opacity: 1, transition: { type: "spring", stiffness: 100 } }
 };
 
-export function LoginForm({ className, ...props }: React.ComponentProps<"form">) {
+export function LoginForm({ className, ...props }: HTMLMotionProps<"form">) {
   const router = useRouter();
   const [loading, setLoading] = useState(false);
   const [googleLoading, setGoogleLoading] = useState(false); // New state for Google button

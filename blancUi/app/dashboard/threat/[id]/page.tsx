@@ -7,6 +7,7 @@ import Link from "next/link";
 import { cn } from "@/lib/utils";
 import { isValidId, sanitizeFilename, isValidApiImageUrl } from "@/lib/sanitize";
 import { renderMermaidSvg } from "@/lib/mermaid";
+import { useTheme } from "next-themes";
 
 // UI Components
 import {
@@ -281,6 +282,8 @@ const getCategoryMeta = (categoryName: string) => {
 
 const MermaidDiagram = ({ diagram }: { diagram: string }) => {
   const ref = useRef<HTMLDivElement>(null);
+  const { resolvedTheme } = useTheme();
+  const mermaidTheme: "light" | "dark" = resolvedTheme === "dark" ? "dark" : "light";
   const [svg, setSvg] = useState<string>("");
   const [error, setError] = useState(false);
   const [isClient, setIsClient] = useState(false);
@@ -330,7 +333,7 @@ const MermaidDiagram = ({ diagram }: { diagram: string }) => {
     const renderDiagram = async () => {
       try {
         const renderedSvg = await renderMermaidSvg(diagram, {
-          theme: "neutral",
+          themeMode: mermaidTheme,
           fontFamily: "sans-serif",
         });
         if (isMounted) {
@@ -347,7 +350,7 @@ const MermaidDiagram = ({ diagram }: { diagram: string }) => {
     return () => {
       isMounted = false;
     };
-  }, [diagram, isClient]);
+  }, [diagram, isClient, mermaidTheme]);
 
   if (!isClient)
     return (
@@ -937,6 +940,84 @@ export default function ThreatReportModern() {
     a.click();
     URL.revokeObjectURL(url);
     toast.success("JSON report downloaded");
+  };
+
+  const downloadMarkdown = () => {
+    // Escape characters that would break out of a markdown table cell.
+    const cell = (v: unknown) =>
+      String(v ?? "")
+        .replace(/\r?\n+/g, " ")
+        .replace(/\|/g, "\\|")
+        .trim() || "—";
+
+    // Free-form body sections (headings, paragraphs, list items) keep
+    // newlines intact but still escape a lone `|` inside inline code.
+    const body = (v: unknown) => String(v ?? "").trim();
+
+    const lines: string[] = [];
+    lines.push(`# ${featureName || frameworkName} — Threat Model Report`);
+    lines.push("");
+    lines.push(`- **Assessment ID:** \`${id}\``);
+    lines.push(`- **Framework:** ${frameworkName}`);
+    if (featureName) lines.push(`- **Feature:** ${featureName}`);
+    lines.push(`- **Generated:** ${new Date().toISOString()}`);
+    lines.push(`- **Total threats:** ${threatModel.length}`);
+    lines.push(
+      `- **By severity:** Critical ${stats.critical} · High ${stats.high} · Medium ${stats.medium} · Low ${stats.low}`,
+    );
+    lines.push("");
+
+    if (criticalRisks.length > 0) {
+      lines.push("## Critical Risks");
+      lines.push("");
+      criticalRisks.forEach((risk, i) => {
+        lines.push(`### ${i + 1}. ${body(risk.title) || "Untitled risk"}`);
+        if (risk.component) lines.push(`- **Component:** ${body(risk.component)}`);
+        if (risk.severity) lines.push(`- **Severity:** ${body(risk.severity)}`);
+        if (risk.description) {
+          lines.push("");
+          lines.push(body(risk.description));
+        }
+        lines.push("");
+      });
+    }
+
+    lines.push("## Threats");
+    lines.push("");
+
+    // Group by category — same shape the UI shows.
+    const byCategory = new Map<string, ThreatRow[]>();
+    threatModel.forEach(t => {
+      const { category } = extractCoreFields(t);
+      const arr = byCategory.get(category) || [];
+      arr.push(t);
+      byCategory.set(category, arr);
+    });
+
+    for (const [category, threats] of byCategory) {
+      lines.push(`### ${category} _(${threats.length})_`);
+      lines.push("");
+      lines.push("| # | Threat | Target | Impact | Description | Mitigation |");
+      lines.push("|---|--------|--------|--------|-------------|------------|");
+      threats.forEach((t, i) => {
+        const { title, description, impact, mitigation, targetLabel, targetValue } =
+          extractCoreFields(t);
+        lines.push(
+          `| ${i + 1} | ${cell(title)} | ${cell(`${targetLabel}: ${targetValue}`)} | ${cell(impact)} | ${cell(description)} | ${cell(mitigation)} |`,
+        );
+      });
+      lines.push("");
+    }
+
+    const md = lines.join("\n");
+    const blob = new Blob([md], { type: "text/markdown;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `${sanitizeFilename(frameworkName.toLowerCase())}-report-${sanitizeFilename(id)}.md`;
+    a.click();
+    URL.revokeObjectURL(url);
+    toast.success("Markdown report downloaded");
   };
 
   const downloadCsv = async () => {
@@ -1913,6 +1994,13 @@ export default function ThreatReportModern() {
                     <span className="text-[10px] text-muted-foreground">Tabular data</span>
                   </div>
                 </DropdownMenuItem>
+                <DropdownMenuItem onClick={downloadMarkdown} className="gap-2 cursor-pointer">
+                  <FileText size={14} className="text-sky-500" />
+                  <div className="flex flex-col">
+                    <span className="text-sm font-medium">Markdown</span>
+                    <span className="text-[10px] text-muted-foreground">Human-readable, grep-able</span>
+                  </div>
+                </DropdownMenuItem>
                 <DropdownMenuItem onClick={downloadJson} className="gap-2 cursor-pointer">
                   <FileText size={14} className="text-indigo-500" />
                   <div className="flex flex-col">
@@ -2110,7 +2198,7 @@ export default function ThreatReportModern() {
                       <motion.div
                         layoutId="activeImageTab"
                         className="absolute bottom-0 left-2 right-2 h-0.5 bg-indigo-500 rounded-full"
-                        transition={{ type: "spring", stiffness: 400, damping: 30 }}
+                        transition={{ type: "spring" as const, stiffness: 400, damping: 30 }}
                       />
                     )}
                   </button>

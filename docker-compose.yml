@@ -1,17 +1,24 @@
 # Blanc — full-stack compose file.
 #
+#   cp blancService/atm/config/docker.yml.example \
+#      blancService/atm/config/docker.yml
+#   # edit docker.yml — OpenAI key, JWT secret, admin email, etc.
 #   docker compose up --build
 #
-# Reads env vars from .env at the repo root. Copy .env.example → .env
-# and fill in secrets before running.
+# All app configuration lives in blancService/atm/config/docker.yml.
+# No .env file is used. Infra credentials for the mariadb / rabbitmq
+# containers are hardcoded below and match the defaults referenced by
+# docker.yml.example. Change both sides together if you want different
+# values.
 #
 # Services:
 #   mariadb    → application DB (data persisted to named volume)
 #   rabbitmq   → task queue      (data persisted to named volume)
 #   api        → FastAPI backend (blancService/), depends on mariadb + rabbitmq
-#   ui         → Next.js frontend (atm/),        depends on api
+#   ui         → Next.js frontend (blancUi/),    depends on api
 #
-# On first boot MariaDB provisions ${MARIADB_DATABASE} automatically.
+# Every port is bound to 127.0.0.1 — nothing gets exposed to the
+# public network by default.
 
 services:
 
@@ -19,12 +26,12 @@ services:
     image: mariadb:11
     restart: unless-stopped
     environment:
-      MARIADB_ROOT_PASSWORD: ${MARIADB_ROOT_PASSWORD}
-      MARIADB_DATABASE: ${MARIADB_DATABASE}
-      MARIADB_USER: ${MARIADB_USER}
-      MARIADB_PASSWORD: ${MARIADB_PASSWORD}
+      MARIADB_ROOT_PASSWORD: atm-root
+      MARIADB_DATABASE: atm
+      MARIADB_USER: atm
+      MARIADB_PASSWORD: atm
     ports:
-      - "127.0.0.1:3306:3306"   # bind to loopback — safer default
+      - "127.0.0.1:3306:3306"
     volumes:
       - mariadb_data:/var/lib/mysql
     healthcheck:
@@ -38,8 +45,8 @@ services:
     image: rabbitmq:3-management
     restart: unless-stopped
     environment:
-      RABBITMQ_DEFAULT_USER: ${RABBITMQ_USER}
-      RABBITMQ_DEFAULT_PASS: ${RABBITMQ_PASSWORD}
+      RABBITMQ_DEFAULT_USER: guest
+      RABBITMQ_DEFAULT_PASS: guest
     ports:
       - "127.0.0.1:5672:5672"
       - "127.0.0.1:15672:15672"  # management UI (http://localhost:15672)
@@ -59,23 +66,10 @@ services:
     restart: unless-stopped
     ports:
       - "127.0.0.1:8000:8000"
-    environment:
-      # Secrets — sourced from .env (never committed).
-      OPENAI_API_KEY: ${OPENAI_API_KEY}
-      JWT_SECRET_KEY: ${JWT_SECRET_KEY}
-      GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID}
-      GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET}
-      GOOGLE_REDIRECT_URI: ${GOOGLE_REDIRECT_URI}
-      ALLOWED_DOMAIN: ${ALLOWED_DOMAIN}
-      FRONTEND_BASE_URL: ${FRONTEND_BASE_URL}
-      ADMIN_EMAIL: ${ADMIN_EMAIL}
-      # Infra creds — used by entrypoint.sh's envsubst.
-      MARIADB_USER: ${MARIADB_USER}
-      MARIADB_PASSWORD: ${MARIADB_PASSWORD}
-      MARIADB_DATABASE: ${MARIADB_DATABASE}
-      RABBITMQ_USER: ${RABBITMQ_USER}
-      RABBITMQ_PASSWORD: ${RABBITMQ_PASSWORD}
     volumes:
+      # Mount the user's docker.yml into the container as the sole
+      # config source. Read-only — the app never writes it.
+      - ./blancService/atm/config/docker.yml:/app/atm/config/docker.yml:ro
       # Persist uploads and the Chroma RAG store across container rebuilds.
       - api_uploads:/app/uploads
       - api_chroma:/app/data/chroma
@@ -96,13 +90,12 @@ services:
       context: ./blancUi
       dockerfile: Dockerfile
       args:
-        # Baked into the client bundle at build time.
-        NEXT_PUBLIC_API_BASE_URL: ${NEXT_PUBLIC_API_BASE_URL}
+        # Baked into the client bundle at build time. Change here if
+        # you're serving the api on a different host / port.
+        NEXT_PUBLIC_API_BASE_URL: http://localhost:8000
     restart: unless-stopped
     ports:
       - "127.0.0.1:3000:3000"
-    environment:
-      NEXT_PUBLIC_API_BASE_URL: ${NEXT_PUBLIC_API_BASE_URL}
     depends_on:
       api:
         condition: service_healthy

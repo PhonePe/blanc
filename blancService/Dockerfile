@@ -7,7 +7,6 @@ FROM python:3.12-slim-bookworm
 #   libgl1          → OpenGL loader — some OpenCV code paths import it even
 #                     under opencv-python-headless
 #   libglib2.0-0    → glib runtime, dragged in by a few OCR wheels
-#   gettext-base    → envsubst, used by entrypoint.sh to render docker.yml
 #   curl            → healthchecks & debugging
 RUN apt-get update -y && \
     apt-get install -y --no-install-recommends \
@@ -16,8 +15,7 @@ RUN apt-get update -y && \
         build-essential \
         libgomp1 \
         libgl1 \
-        libglib2.0-0 \
-        gettext-base && \
+        libglib2.0-0 && \
     apt-get clean && \
     rm -rf /var/lib/apt/lists/*
 

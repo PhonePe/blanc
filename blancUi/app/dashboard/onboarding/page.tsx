@@ -322,7 +322,7 @@ export default function OrgOnboardingModern() {
                 initial={{ opacity: 0, scale: 0.85, rotate: -6 }}
                 animate={{ opacity: 1, scale: 1, rotate: 0 }}
                 transition={{
-                  type: "spring",
+                  type: "spring" as const,
                   stiffness: 280,
                   damping: 18,
                   delay: 0.1,
@@ -610,7 +610,7 @@ export default function OrgOnboardingModern() {
                     <motion.span
                       layoutId="onboarding-active-bg"
                       transition={{
-                        type: "spring",
+                        type: "spring" as const,
                         stiffness: 320,
                         damping: 28,
                       }}
@@ -621,7 +621,7 @@ export default function OrgOnboardingModern() {
                     <motion.span
                       layoutId="onboarding-active-bar"
                       transition={{
-                        type: "spring",
+                        type: "spring" as const,
                         stiffness: 320,
                         damping: 28,
                       }}
