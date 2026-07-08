@@ -1,6 +1,6 @@
-# ATM Service — Complete Codebase Documentation
+# Blanc / ATM Service — Codebase Documentation
 
-> **Automated Threat Modeling (ATM)** — A FastAPI-based service that automates security threat modeling using LLM-powered analysis of architecture diagrams. It supports multiple threat frameworks (STRIDE, LINDDUN, DREAD, PASTA, BUSINESS_LOGIC), RAG-enhanced clarification, multi-image assessments, and a full review/approval workflow.
+> **Automated Threat Modeling (ATM)** — the FastAPI backend that powers Blanc Studio. It ingests architecture / sequence / data-flow diagrams (plus optional supporting PDFs), runs a two-phase LLM analysis pipeline per image, auto-answers clarification questions via RAG, then generates framework-specific threats (STRIDE, Business Logic) with a full reviewer workflow.
 
 ---
 
@@ -9,7 +9,7 @@
 1. [Architecture Overview](#1-architecture-overview)
 2. [Technology Stack](#2-technology-stack)
 3. [Project Structure](#3-project-structure)
-4. [Entry Point — main.py](#4-entry-point--mainpy)
+4. [Entry Point — `main.py`](#4-entry-point--mainpy)
 5. [Configuration](#5-configuration)
 6. [Database Models](#6-database-models)
 7. [API Schemas (Pydantic)](#7-api-schemas-pydantic)
@@ -18,68 +18,82 @@
 10. [Core Processing Pipeline](#10-core-processing-pipeline)
 11. [State Machine](#11-state-machine)
 12. [Message Queue (RabbitMQ)](#12-message-queue-rabbitmq)
-13. [LLM Integration](#13-llm-integration)
+13. [LLM Client](#13-llm-client)
 14. [RAG (Retrieval-Augmented Generation)](#14-rag-retrieval-augmented-generation)
-15. [Authentication & Authorization](#15-authentication--authorization)
-16. [CRUD Operations](#16-crud-operations)
-17. [Prompt Templates](#17-prompt-templates)
-18. [Utilities](#18-utilities)
-19. [End-to-End Flow](#19-end-to-end-flow)
-20. [Deployment](#20-deployment)
-21. [Dependencies](#21-dependencies)
+15. [Storage Backends](#15-storage-backends)
+16. [OCR](#16-ocr)
+17. [Skills (Prompt System)](#17-skills-prompt-system)
+18. [Authentication & Authorization](#18-authentication--authorization)
+19. [CRUD Layer](#19-crud-layer)
+20. [Utilities](#20-utilities)
+21. [End-to-End Flow](#21-end-to-end-flow)
+22. [Deployment](#22-deployment)
+23. [Dependencies](#23-dependencies)
 
 ---
 
 ## 1. Architecture Overview
 
 ```
-┌─────────────────────────────────────────────────────────────────────┐
-│                        FastAPI Application                         │
-│  ┌──────────┐  ┌──────────┐  ┌──────────┐  ┌──────────────────┐   │
-│  │  Routers │→ │ Services │→ │   CRUD   │→ │  MariaDB (ORM)   │   │
-│  └──────────┘  └──────────┘  └──────────┘  └──────────────────┘   │
-│       │                                                            │
-│       ▼                                                            │
-│  ┌──────────────┐     ┌────────────────┐    ┌──────────────────┐   │
-│  │  RMQ Producer │────→│  RMQ Consumer  │───→│  Core Pipeline   │   │
-│  └──────────────┘     └────────────────┘    │  (LLM + RAG)     │   │
-│                                             └──────────────────┘   │
-│                                                    │               │
-│                              ┌─────────────────────┼───────────┐   │
-│                              ▼                     ▼           ▼   │
-│                        ┌──────────┐      ┌───────────┐  ┌───────┐ │
-│                        │ OpenAI   │      │ Vector DB │  │DocGPT │ │
-│                        │ (GPT-5)  │      │  (RAG)    │  │       │ │
-│                        └──────────┘      └───────────┘  └───────┘ │
-└─────────────────────────────────────────────────────────────────────┘
+┌──────────────────────────────────────────────────────────────────────────┐
+│                          FastAPI Application                             │
+│  ┌──────────┐  ┌──────────┐  ┌──────────┐  ┌────────────────────────┐    │
+│  │ Routers  │→ │ Services │→ │   CRUD   │→ │  MariaDB (SQLAlchemy)  │    │
+│  └──────────┘  └──────────┘  └──────────┘  └────────────────────────┘    │
+│       │                                                                  │
+│       ▼                                                                  │
+│  ┌─────────────┐     ┌──────────────┐    ┌────────────────────────┐      │
+│  │ RMQ Producer│────→│ RMQ Consumer │───→│   Core Pipelines       │      │
+│  └─────────────┘     └──────────────┘    │  (analysis + threats)  │      │
+│       │ fallback                          └────────────────────────┘      │
+│       ▼ (in-process)                             │                       │
+│   ┌────────────┐                     ┌───────────┼───────────┐           │
+│   │  Skills    │─── prompts ────────▶│           ▼           ▼           │
+│   │ (.md files)│                     │      ┌────────┐  ┌────────┐       │
+│   └────────────┘                     │      │  LLM   │  │  RAG   │       │
+│                                      │      │ Client │  │ Backend│       │
+│                                      │      └────┬───┘  └────┬───┘       │
+│                                      │           │           │           │
+│                                      │       providers    ┌──┴──┐        │
+│                                      │       (openai,     │local│─Chroma │
+│                                      │        litellm)    │http │─Remote │
+│                                      │                    └─────┘        │
+│                                      │                                   │
+│                                      │  Storage (local │ s3)   OCR (paddle)│
+│                                      └─────────────────────────────────  │
+└──────────────────────────────────────────────────────────────────────────┘
 ```
 
 ### Request Flow Summary
 
-1. **Assessment Creation** → User uploads architecture diagram images + optional PDFs → Saved to DB → IMAGE_ANALYSIS tasks published to RabbitMQ
-2. **Image Analysis** (per-image, parallel) → RMQ consumer picks up → 6-stage LLM pipeline → Mermaid diagram, summary, components, clarification questions → State derived from all images
-3. **Clarification** → If questions exist, user answers (or auto-answer via RAG) → State transitions to COMPLETED
-4. **Threat Modeling** → User triggers → Assessment-level RMQ task → Multi-framework threat generation using merged image data → Results stored
-5. **Review** → Reviewers assigned → Approve/reject workflow → Final state: APPROVED or CHANGES_REQUESTED
+1. **Assessment creation** — User uploads images (+ optional PDFs). Rows created for `Assessment`, one `DocumentAnalysis` per image, one `AssessmentDocument` per PDF. `IMAGE_ANALYSIS_PHASE_A` and `PDF_INGESTION` messages published to RabbitMQ.
+2. **Image analysis — Phase A** — Consumer runs `image → Mermaid → components`. Row transitions to `AWAITING_REVIEW`, pausing until the user hits **Next** in the Studio.
+3. **Image analysis — Phase B** — On user continue, `IMAGE_ANALYSIS_PHASE_B` runs `summary + clarification questions`, then RAG-based auto-answering. Row ends in `NEEDS_INPUT` or `COMPLETED`.
+4. **Clarification** — User answers remaining questions (or auto-answers). Assessment state is derived from all image states.
+5. **Threat modeling** — User triggers per-framework generation. Multi-framework registry (STRIDE, BUSINESS_LOGIC) fans out parallel LLM calls per category. Results persisted with per-image traceability.
+6. **Review** — Reviewers assigned; per-threat approve/reject/comment; assessment ends in `APPROVED` or `CHANGES_REQUESTED`.
+7. **Every LLM call is logged** to `llm_usage` (tokens + estimated cost) for full audit.
 
 ---
 
 ## 2. Technology Stack
 
-| Category | Technology | Version |
-|---|---|---|
-| **Web Framework** | FastAPI | 0.121.0 |
-| **ASGI Server** | Uvicorn | 0.40.0 |
-| **Database** | MariaDB + SQLAlchemy ORM | SQLAlchemy 2.0.43, mariadb 1.1.14 |
-| **Message Queue** | RabbitMQ via aio-pika | 9.5.7 |
-| **LLM** | OpenAI GPT (GPT-5 STG) | openai 1.108.1 |
-| **PDF Processing** | PyMuPDF, python-docx, fpdf2 | PyMuPDF 1.23.8 |
-| **Authentication** | Google OAuth2 + JWT | PyJWT 2.11.0, google-auth 2.48.0 |
-| **Password Hashing** | Argon2 via passlib | passlib 1.7.4 |
-| **Text Chunking** | LangChain Text Splitters | langchain-text-splitters 0.3.11 |
-| **Validation** | Pydantic v2 | 2.11.9 |
-| **Logging** | colorlog | 6.9.0 |
-| **HTTP Client** | httpx, requests | httpx 0.28.1, requests 2.32.5 |
+| Category | Technology |
+|---|---|
+| Web framework | FastAPI + Uvicorn |
+| Database | MariaDB via SQLAlchemy 2.x ORM |
+| Message queue | RabbitMQ via `aio-pika` (with in-process fallback) |
+| LLM | OpenAI-compatible providers (`openai` SDK, `litellm`) |
+| RAG | Pluggable backends — local Chroma or remote HTTP vector DB |
+| Storage | Pluggable — local filesystem or S3 |
+| OCR | PaddleOCR (lazy-loaded, out-of-process CLI) |
+| PDF | PyMuPDF (extraction), fpdf2 (export) |
+| Auth | Google OAuth2 + local JWT (HS256), Argon2 password hashing |
+| Validation | Pydantic v2 |
+| Text chunking | LangChain text splitters |
+| Logging | `colorlog` |
+
+Exact pinned versions live in [blancService/requirements.txt](blancService/requirements.txt).
 
 ---
 
@@ -88,120 +102,147 @@
 ```
 blancService/
 ├── main.py                          # FastAPI entry point
-├── Dockerfile                       # Container build config
+├── Dockerfile                       # Container image
+├── entrypoint.sh                    # Container entrypoint
 ├── requirements.txt                 # Python dependencies
-├── README.md                        # (Empty placeholder)
-├── STATE_FLOW.md                    # State machine documentation
-├── uploads/                         # Uploaded files (images, PDFs)
+├── CODEBASE_DOCUMENTATION.md        # (this file)
+├── uploads/                         # Local file storage (bind-mounted in prod)
 │
-├── atm/                             # Main application package
-│   ├── __init__.py
-│   ├── schemas.py                   # Standard API response model
-│   ├── utils.py                     # Response helpers
-│   │
-│   ├── api_schemas/                 # Pydantic request/response models
-│   │   └── api_v1/
-│   │       ├── ai_response.py       # Threat modeling response schemas (all frameworks)
-│   │       ├── app.py               # Application onboarding schemas
-│   │       ├── app_onboarding.py    # Re-exports from onboarding
-│   │       ├── assessment.py        # Assessment schemas + enums
-│   │       ├── auth_schema.py       # Auth schemas (user, token)
-│   │       ├── onboarding.py        # Org/app onboarding schemas
-│   │       ├── org.py               # Organization schemas
-│   │       ├── rag.py               # RAG search/ingest schemas
-│   │       ├── reviewer.py          # Review workflow schemas
-│   │       └── threat_modeling_schema.py  # (Empty, schemas in ai_response.py)
-│   │
-│   ├── config/
-│   │   └── config.yml               # Default configuration (gitignored)
-│   │
-│   ├── config_parsers/              # Configuration management
-│   │   ├── config_client.py         # Singleton config provider
-│   │   ├── config_models.py         # Pydantic config models
-│   │   └── log_utils.py             # Logging setup
-│   │
-│   ├── core/                        # Core business logic & pipelines
-│   │   ├── document_analysis.py     # Per-image LLM analysis pipeline
-│   │   ├── state_machine.py         # State transition validation
-│   │   ├── stride_service.py        # Legacy STRIDE-only threat modeling
-│   │   ├── threat_modeling.py       # Multi-framework threat modeling (NEW)
-│   │   ├── auth/
-│   │   │   └── auth.py              # JWT + OAuth2 auth logic
-│   │   ├── llm_client/
-│   │   │   └── gpt_llm.py           # OpenAI LLM abstraction + usage tracking
-│   │   └── rag_client/
-│   │       ├── chunker.py           # PDF text chunking for ingestion
-│   │       ├── extractor.py         # PDF text + image extraction
-│   │       └── vector_db.py         # Vector DB client (ingest + search)
-│   │
-│   ├── crud/                        # Database CRUD operations
-│   │   ├── assessment_crud.py       # Assessment, DocumentAnalysis, threats
-│   │   └── application_crud.py      # Apps, onboarding, questions, progress
-│   │
-│   ├── db/                          # Database connection
-│   │   └── database.py              # SQLAlchemy engine + session factory
-│   │
-│   ├── db_models/                   # ORM models
-│   │   └── models.py                # All SQLAlchemy table definitions
-│   │
-│   ├── prompt/
-│   │   └── prompt.py                # LLM prompt templates
-│   │
-│   ├── queue/                       # RabbitMQ integration
-│   │   ├── cancelable_thread_pool_exectuor.py  # Custom thread pool
-│   │   ├── consumer.py              # Async RMQ consumer with retry/DLQ
-│   │   ├── message_processing.py    # Task dispatcher + handlers
-│   │   ├── producer.py              # Async RMQ producer with fallback
-│   │   ├── rmq_message.py           # Message format + task types
-│   │   └── threaded_consumer_wrapper.py  # Multi-threaded consumer orchestration
-│   │
-│   ├── routers/                     # API endpoint definitions
-│   │   ├── app_router.py            # App CRUD endpoints
-│   │   ├── application_router.py    # App onboarding endpoints
-│   │   ├── assessment_router.py     # Assessment lifecycle endpoints
-│   │   ├── auth_router.py           # Auth endpoints (Google OAuth + JWT)
-│   │   ├── enum_router.py           # Enum value endpoints
-│   │   ├── health_check_router.py   # Health check
-│   │   ├── llm_usage_router.py      # LLM usage tracking
-│   │   ├── onboarding_router.py     # Org onboarding endpoints
-│   │   ├── org_router.py            # Organization CRUD
-│   │   ├── question_router.py       # Question/category management
-│   │   ├── rag_router.py            # RAG ingest + search endpoints
-│   │   ├── reviews.py               # Review workflow endpoints
-│   │   └── threat_modeling_router.py # Threat modeling lifecycle
-│   │
-│   ├── services/                    # Business logic layer
-│   │   ├── application_service.py   # App onboarding logic
-│   │   ├── assessment_service.py    # Assessment lifecycle logic
-│   │   ├── auth_service.py          # Auth business logic
-│   │   ├── onboarding_service.py    # Org onboarding logic
-│   │   └── threat_modeling_service.py  # Threat modeling cleanup
-│   │
-│   └── util/                        # Shared utilities
-│       ├── fastapi_event_emitter.py # App lifecycle management
-│       └── managed_entity.py        # Abstract lifecycle interface
-│
-└── env/                             # Python virtual environment
+└── atm/                             # Main application package
+    ├── __init__.py
+    ├── utils.py                     # standard_response helper
+    │
+    ├── api_schemas/api_v1/          # Pydantic request/response models
+    │   ├── ai_response.py           # Threat-modeling response schemas
+    │   ├── app.py                   # App onboarding
+    │   ├── assessment.py            # Assessment DTOs + enums
+    │   ├── auth_schema.py           # Auth DTOs
+    │   ├── onboarding.py            # Org onboarding
+    │   ├── org.py                   # Organization DTOs
+    │   ├── rag.py                   # RAG search / ingest DTOs
+    │   └── threat_modeling_schema.py# SurfaceMap payloads (Threat Modeller Inventory)
+    │
+    ├── config/                      # YAML config files
+    │   ├── config.yml               # Active config (gitignored)
+    │   ├── config.yml.example       # Bare-metal template
+    │   └── docker.yml.example       # Docker Compose template
+    │
+    ├── config_parsers/
+    │   ├── config_models.py         # Pydantic AppConfig hierarchy
+    │   ├── settings.py              # get_settings() loader (env-aware)
+    │   └── log_utils.py             # colorlog configuration
+    │
+    ├── core/                        # Domain logic & pipelines
+    │   ├── document_analysis.py     # Two-phase per-image LLM pipeline
+    │   ├── state_machine.py         # Transition guards (image + assessment)
+    │   ├── threat_modeling.py       # Multi-framework threat generation
+    │   ├── auth/
+    │   │   └── auth.py              # JWT + OAuth2 + role deps
+    │   ├── component_info/          # (reserved, currently empty)
+    │   ├── llm_client/              # Provider-abstracted LLM client
+    │   │   ├── base.py              # LLMProvider / LLMMessage / LLMResponse ABCs
+    │   │   ├── client.py            # LLMClient facade + ModelResolver
+    │   │   ├── attachments.py       # Local + remote attachment loading
+    │   │   ├── auth.py              # Provider auth strategies
+    │   │   ├── usage.py             # UsageSink / UsageRecord
+    │   │   └── providers/
+    │   │       ├── openai_provider.py
+    │   │       └── litellm_provider.py
+    │   ├── ocr/
+    │   │   ├── paddle_cli.py        # Standalone PaddleOCR CLI
+    │   │   └── paddle_runner.py     # In-process wrapper
+    │   ├── rag_client/
+    │   │   ├── chunker.py           # RecursiveCharacterTextSplitter chunking
+    │   │   ├── embeddings.py        # Local embedding models
+    │   │   ├── extractor.py         # PDF text + image extraction (PyMuPDF)
+    │   │   ├── factory.py           # Backend selection (local / http / plugin)
+    │   │   ├── local_vector_db.py   # Chroma-backed LocalVectorDB
+    │   │   └── vector_db.py         # Remote HTTP VectorDBClient
+    │   └── storage/
+    │       ├── base.py              # StorageBackend ABC + StorageResult
+    │       ├── factory.py           # Backend selection (local / s3)
+    │       ├── local_storage.py
+    │       └── s3_storage.py
+    │
+    ├── crud/
+    │   ├── assessment_crud.py       # Assessment, DocumentAnalysis, results
+    │   ├── application_crud.py      # Apps, questions, onboarding progress
+    │   └── surface_map_crud.py      # Surface-map inventory upsert/read/delete
+    │
+    ├── db/
+    │   └── database.py              # Engine, SessionLocal, Base, get_db()
+    │
+    ├── db_models/
+    │   └── models.py                # SQLAlchemy tables + EnumAsString TypeDecorator
+    │
+    ├── queue/                       # RabbitMQ integration
+    │   ├── cancelable_thread_pool_exectuor.py
+    │   ├── consumer.py              # Async consumer with retry + DLQ
+    │   ├── message_processing.py    # Task dispatcher
+    │   ├── producer.py              # Async producer with in-process fallback
+    │   ├── rmq_message.py           # RMQMessage + TaskType enum
+    │   └── threaded_consumer_wrapper.py
+    │
+    ├── routers/                     # API endpoints
+    │   ├── app_router.py
+    │   ├── application_router.py
+    │   ├── assessment_router.py
+    │   ├── auth_router.py
+    │   ├── enum_router.py
+    │   ├── health_check_router.py
+    │   ├── llm_usage_router.py
+    │   ├── onboarding_router.py
+    │   ├── org_router.py
+    │   ├── question_router.py
+    │   ├── rag_router.py
+    │   ├── reviews.py
+    │   └── threat_modeling_router.py
+    │
+    ├── services/                    # Class-based business logic
+    │   ├── application_service.py
+    │   ├── assessment_service.py
+    │   ├── auth_service.py
+    │   └── onboarding_service.py
+    │
+    ├── skills/                      # Prompt-as-a-skill system
+    │   ├── __init__.py              # get_skill / list_skills / plugin discovery
+    │   └── definitions/             # Markdown skill files (frontmatter + body)
+    │       ├── auto_answer_clarification.md
+    │       ├── business_logic_threat_modeling.md
+    │       ├── clarification_questions.md
+    │       ├── component_breakdown.md
+    │       ├── high_level_summary.md
+    │       ├── image_to_mermaid.md
+    │       ├── image_to_mermaid_auto.md
+    │       ├── stride_threat_modeling.md
+    │       ├── surface_discovery.md
+    │       └── threat_analysis.md
+    │
+    └── util/
+        ├── file_sniff.py            # MIME sniffing / file type detection
+        └── managed_entity.py        # Lifecycle interface (start/stop)
 ```
 
 ---
 
-## 4. Entry Point — main.py
+## 4. Entry Point — `main.py`
 
-**File:** `main.py`
+**File:** [blancService/main.py](blancService/main.py)
 
 ### Responsibilities
-- Initializes the FastAPI application
-- Configures CORS middleware (allows all origins)
-- Mounts `/uploads` as static file directory for serving uploaded documents
-- Starts background RabbitMQ consumer threads via `ThreadedConsumerWrapper`
-- Registers all 13 routers
-- Runs **startup recovery** — scans for assessments stuck in PENDING/PROCESSING states and re-publishes their RMQ messages (handles server crashes)
+- Load config + configure logging via `get_settings()` and `LoggingConfig.configure_logging()`.
+- Call `Base.metadata.create_all(bind=engine)` — creates missing tables on first boot. `EnumAsString` (VARCHAR) is used everywhere state/status is stored, so adding new Python enum members requires no schema change.
+- Ensure the local uploads directory exists and is writable (fail-fast probe).
+- Mount `/uploads` as a hardened static route (see below).
+- Install CORS middleware with an **explicit** allow-list (localhost:3000, 127.0.0.1:3000, `config.frontend.base_url`) — no wildcards.
+- Register 13 routers.
+- Start `ThreadedConsumerWrapper` (RabbitMQ consumers).
+- Run **startup recovery**: re-publish `IMAGE_ANALYSIS_PHASE_A`, `IMAGE_ANALYSIS_PHASE_A_FROM_MERMAID`, or `THREAT_MODELING` messages for rows stuck in `PENDING`/`PROCESSING` within the last 24 h.
 
 ### Registered Routers
 
 | Router | Module |
-|--------|--------|
+|---|---|
 | Assessment | `assessment_router` |
 | Auth | `auth_router` |
 | Organization | `org_router` |
@@ -216,1124 +257,921 @@ blancService/
 | Reviews | `reviews` |
 | LLM Usage | `llm_usage_router` |
 
-### Startup Recovery Logic
-```python
-async def recover_stuck_tasks():
-    # Scans for assessments/images stuck in PENDING or PROCESSING
-    # Only recovers tasks updated within the last 24 hours
-    # Re-publishes IMAGE_ANALYSIS and THREAT_MODELING RMQ messages
-```
+### `/uploads` hardening middleware
 
-### Server Configuration
-- Host: `0.0.0.0`, Port: `8000`
-- Workers: 1 (configurable)
-- Hot reload enabled in dev
+Anything served under `/uploads/` gets these headers to neutralise stored-XSS via uploaded `.svg` / `.html`:
+
+- `X-Content-Type-Options: nosniff`
+- `Content-Disposition: attachment` (forces download rather than inline render)
+- `Referrer-Policy: no-referrer`
+
+### Server run configuration
+
+- Host / port / worker count come from `config.fastApiConfig`.
+- `reload=True` in `main.py` is a dev convenience; production runs Uvicorn/Gunicorn without it via `entrypoint.sh`.
 
 ---
 
 ## 5. Configuration
 
-### 5.1 Config Provider (`config_parsers/config_client.py`)
+### 5.1 Loader — `config_parsers/settings.py`
 
-Singleton pattern — loads config based on `ENV` environment variable:
-- `config` → reads `atm/config/config.yml` (default when `ENV` is unset)
-- `docker` → reads `atm/config/docker.yml` (used by the compose entrypoint)
-- Any other `ENV=<name>` → reads `atm/config/<name>.yml`
-- `ATM_CONFIG_PATH=/abs/path.yml` overrides both of the above
+```python
+from atm.config_parsers.settings import get_settings
+settings = get_settings()   # returns AppConfig, cached via @lru_cache
+```
 
-### 5.2 Config Models (`config_parsers/config_models.py`)
+Resolution order (highest priority first):
 
-All models are Pydantic `BaseModel` subclasses:
+1. `ATM_CONFIG_PATH=/abs/path.yml` env var — absolute path to any YAML file.
+2. `ENV=<name>` env var — reads `atm/config/<name>.yml` (default `ENV=config` → `config.yml`; Docker Compose sets `ENV=docker` → `docker.yml`).
 
-| Model | Key Fields |
-|-------|------------|
-| `AppConfig` | Master config containing all sub-configs below |
+YAML supports environment-variable expansion: `${VAR}` and `${VAR:-fallback}`. Missing vars without a fallback raise a clear error. YAML is parsed with `yaml.safe_load`. Config errors cause `sys.exit(2)` so process supervisors treat them as failures.
+
+### 5.2 Config models — `config_parsers/config_models.py`
+
+All are Pydantic v2 `BaseModel` subclasses. The root is `AppConfig`:
+
+| Model | Purpose |
+|---|---|
+| `AppConfig` | Root model containing every sub-config below |
 | `FastApiConf` | `appHost`, `appPort`, `num_workers` |
-| `OpenAIConfig` | `openai_url`, `model_name`, `provider`, `api_key` |
-| `PricingConfig` | `prompt_cost_per_million`, `completion_cost_per_million` |
-| `RAGConfig` | `namespace`, `collection_id`, `api_url`, `auth_token_env` |
+| `Path` | Filesystem path settings |
+| `OpenAIConfig` | `openai_url`, `model_name`, `provider`, `api_key`, etc. |
+| `ModelConfig` | Per-purpose LLM model spec (name + pricing) |
+| `OpenApiConfig` | OpenAPI schema tweaks |
+| `PricingConfig` | Default `prompt_cost_per_million`, `completion_cost_per_million` |
+| `RAGConfig` | Namespace, collection, backend selection |
+| `RAGLocalConfig` | Local Chroma settings |
+| `RAGEmbedderConfig` | Local embedding model settings |
 | `GoogleAuthConfig` | `client_id`, `client_secret`, `redirect_uri`, `allowed_domain` |
+| `FrontendConfig` | `base_url` used for CORS + OAuth redirects |
 | `JwtConfig` | `secret_key`, `algorithm`, `access_token_expire_minutes` |
-| `DBConf` | `mariadbConnectionString`, `poolSize`, `poolRecycle`, `maxOverflow` |
-| `RMQConf` | `hosts`, `port`, `username`, `password`, `queues[]` |
+| `DBConf` | Connection string, pool sizing |
+| `QueueDetails` / `RMQConf` | RabbitMQ hosts, credentials, queue definitions |
+| `StorageConfig` | Backend selector + local/S3 sub-configs |
+| `S3Config` | Bucket, region, credentials |
 
-### 5.3 Configuration Summary (`config/config.yml`)
+### 5.3 Logging — `config_parsers/log_utils.py`
 
-| Section | Value |
-|---------|-------|
-| FastAPI | `0.0.0.0:8000`, 1 worker |
-| OpenAI | OpenAI-compatible endpoint and model configured in `openaiconfig` |
-| Database | MariaDB at `localhost:3306/atm`, pool 100, recycle 300s |
-| RabbitMQ | `localhost:5672`, guest/guest, queue "ATM" with concurrency 10 |
-| JWT | HS256, 300-min expiry |
-| Google Auth | Restricted to a configurable email domain (`google_auth.allowed_domain`) |
-| RAG | Namespace `appsec`, collection `DC_APPSEC_ASSESSMENT_LOCAL` |
-| Pricing | 30.0 $/M prompt tokens, 60.0 $/M completion tokens |
-
-### 5.4 Logging (`config_parsers/log_utils.py`)
-
-- `LoggingConfig.configure_logging()` — applies logging config from `AppConfig`
-- Uses `colorlog.ColoredFormatter` with color-coded log levels
-- Suppresses noisy loggers: `aio_pika`, `aiormq`, `httpx`, `httpcore`, `openai`
+- `LoggingConfig.configure_logging()` applies the config from `AppConfig`.
+- Uses `colorlog.ColoredFormatter`.
+- Noisy loggers (`aio_pika`, `aiormq`, `httpx`, `httpcore`, `openai`) are suppressed to WARNING/ERROR.
 
 ---
 
 ## 6. Database Models
 
-**File:** `db_models/models.py`  
-**Engine:** MariaDB via SQLAlchemy ORM  
-**Session management:** `db/database.py` — provides `get_db()` (FastAPI dependency) and `get_db_session()` (context manager)
+**File:** [blancService/atm/db_models/models.py](blancService/atm/db_models/models.py)
+**Engine / session:** [blancService/atm/db/database.py](blancService/atm/db/database.py) exposes `Base`, `engine`, `SessionLocal`, `get_db()` (FastAPI dep), and `get_db_session()` (context manager).
 
-### 6.1 Enums
+### 6.1 `EnumAsString` TypeDecorator
+
+Custom SQLAlchemy `TypeDecorator` that stores Python `enum.Enum` values as `VARCHAR(32)` — sidestepping MariaDB's `ENUM(...)` freeze-at-CREATE-TABLE problem. Reads round-trip back to the enum member, so `.state == AssessmentState.FAILED` still works. Adding a new enum member requires no schema change.
+
+### 6.2 Enums
 
 ```python
-class AssessmentState(str, Enum):
-    PENDING, PROCESSING, NEEDS_INPUT, COMPLETED, FAILED, REVIEW, APPROVED, CHANGES_REQUESTED
+class AssessmentState(enum.Enum):
+    PENDING
+    PROCESSING
+    AWAITING_REVIEW        # Phase A finished (mermaid + components), waiting for user "Next"
+    NEEDS_INPUT            # Clarification questions outstanding
+    COMPLETED
+    FAILED
+    REVIEW                 # Threats generated, in reviewer workflow
+    APPROVED               # Terminal
+    CHANGES_REQUESTED      # Reviewer rejected → back to REVIEW
 
-class AssessmentStage(str, Enum):
-    INITIALIZING, IMAGE_PROCESSING, SUMMARIZING, COMPONENT_ANALYSIS, CLARIFICATION, THREAT_MODELING
+class AssessmentStage(enum.Enum):
+    INITIALIZING
+    IMAGE_PROCESSING
+    SUMMARIZING
+    COMPONENT_ANALYSIS
+    CLARIFICATION
+    THREAT_MODELING
 
-class ReviewStatus(str, Enum):
-    PENDING, APPROVED, REJECTED
+class ReviewStatus(enum.Enum):
+    PENDING
+    APPROVED
+    REJECTED
 ```
 
-### 6.2 Tables
+### 6.3 Tables
 
-#### **User**
-| Column | Type | Notes |
-|--------|------|-------|
-| userId | String (UUID, PK) | Auto-generated |
-| email | String (unique) | |
-| password | String (nullable) | Argon2-hashed; null for Google OAuth users |
-| name | String | |
-| role | Enum(ADMIN, SUPERADMIN, USER) | Default: USER |
-| isActive | Boolean | Default: True |
-| created_at | DateTime | Auto |
-| updated_at | DateTime | Auto-updated |
+Below is the shape of each table. See the source for the full column list.
 
-#### **Assessment**
-| Column | Type | Notes |
-|--------|------|-------|
-| assessment_id | String (UUID, PK) | Auto-generated |
-| type | String | Assessment type (SECURITY, COMPLIANCE) |
-| framework | String | Threat framework (STRIDE, PASTA, etc.) |
-| team | String | |
-| app_name | String | |
-| org_name | String | |
-| state | Enum(AssessmentState) | Default: PENDING |
-| stage | Enum(AssessmentStage) | Default: INITIALIZING |
-| error_message | Text (nullable) | |
-| user_id | FK → User.userId | Creator |
-| approved_by | FK → User.userId (nullable) | Approver |
-| created_at / updated_at | DateTime | |
+- **`user`** — `userId` (PK, UUID), `email`, `password` (Argon2 hash; null for OAuth-only users), `name`, `role` (`ADMIN`/`SUPERADMIN`/`USER`), `isActive`, timestamps.
+- **`assessment`** — `assessment_id` (PK), `assessment_type`, `framework`, `team`, `app_name`, `org_name`, `interface`, `operating_system`, `error_message`, `state`, `stage`, `feature_name`, `feature_version`, `user_id` (FK), `approved_by` (FK), `approved_comment`, `approved_at`, timestamps.
+- **`document_analysis`** — Composite PK `(assessment_id, image_id)`. Columns: `image_path`, `diagram_type` (default `"flowchart TD"`), `state`, `stage`, `error_message`, and four JSON blobs: `flow_diagram`, `analysis_summary`, `component_details`, `clarification`.
+- **`assessment_documents`** — Composite PK `(assessment_id, document_type, document_id)`. `client`, `meta` (JSON).
+- **`assessment_results`** — Auto-increment `id`, `assessment_id` (FK), `image_id` (nullable, source traceability), `category`, `title`, `description`, `component_affected`, `attack_vector`, `mitigations`, `severity`, `likelihood`, `risk`, `detection`, `state`, `review_status`, `review_comment`, `reviewed_by` (FK), `reviewed_at`.
+- **`assessment_reviewers`** — `id`, `assessment_id` (FK), `reviewer_id` (FK), `status` (`EnumAsString(ReviewStatus)`), `comment`, `reviewed_at`.
+- **`llm_usage`** — `id`, `assessment_id` (FK, indexed), `call_type`, `model`, `input_tokens`, `output_tokens`, `total_tokens`, `tokens_billed`, `estimated_cost`, `duration_ms`, `created_at`.
+- **`category`** — `id`, `name`, `entity_type` (`APP`/`ORG`), `order`.
+- **`question`** — `id`, `question`, `options`, `entity_type`, `category_id` (FK).
+- **`org`** — `id`, `name`, `status`.
+- **`organization_response`** — `id`, `org_id`, `question_id`, `response`.
+- **`onboarding_progress`** — `id`, `org_id`, `entity_type`, `entity_id`, `category_id`, `status`.
+- **`app`** — `id`, `name`, `org_id`, `status`.
+- **`application_response`** — `id`, `app_id`, `question_id`, `response`.
+- **`surface_map`** — Composite PK `(assessment_id, image_id)`. `surface_map` (JSON — Threat Modeller Inventory payload). `created_at`, `updated_at`. Survives Mermaid re-syncs because edits live in JSON, not in `flow_diagram`.
 
-#### **DocumentAnalysis**
-| Column | Type | Notes |
-|--------|------|-------|
-| assessment_id | String (PK, FK) | Composite PK with image_id |
-| image_id | String (PK) | UUID per image |
-| image_path | String | File system path to image |
-| state | Enum(AssessmentState) | Per-image state |
-| stage | Enum(AssessmentStage) | Per-image processing stage |
-| error_message | Text (nullable) | |
-| flow_diagram | JSON (nullable) | Mermaid diagram output |
-| analysis_summary | JSON (nullable) | High-level summary |
-| component_details | JSON (nullable) | Component breakdown |
-| clarification | JSON (nullable) | Questions + answers |
-| created_at | DateTime | |
-
-#### **AssessmentDocument**
-| Column | Type | Notes |
-|--------|------|-------|
-| assessment_id | String (PK) | Composite PK |
-| document_type | String (PK) | e.g., "pdf", "supporting_doc" |
-| document_id | String (PK) | UUID |
-| client | String | |
-| meta | JSON (nullable) | Additional metadata |
-
-#### **AssessmentResults** (Threats)
-| Column | Type | Notes |
-|--------|------|-------|
-| id | Integer (PK) | Auto-increment |
-| assessment_id | FK → Assessment | |
-| image_id | String (nullable) | Source image traceability |
-| category | String | STRIDE category, LINDDUN type, etc. |
-| title | String | Threat title |
-| description | Text | Threat description |
-| component_affected | String | |
-| mitigations | Text | Recommended mitigations |
-| severity | String | HIGH, MEDIUM, LOW |
-| likelihood | String | |
-| state | String | |
-| review_status | String (nullable) | Per-threat review status |
-| review_comment | Text (nullable) | |
-| reviewed_by | FK → User (nullable) | |
-| reviewed_at | DateTime (nullable) | |
-
-#### **AssessmentReviewer**
-| Column | Type | Notes |
-|--------|------|-------|
-| id | Integer (PK) | Auto-increment |
-| assessment_id | FK → Assessment | |
-| reviewer_id | FK → User.userId | |
-| status | Enum(ReviewStatus) | Default: PENDING |
-| comment | Text (nullable) | |
-| reviewed_at | DateTime (nullable) | |
-
-#### **LLMUsage**
-| Column | Type | Notes |
-|--------|------|-------|
-| id | Integer (PK) | Auto-increment |
-| assessment_id | FK → Assessment | |
-| call_type | String | e.g., "mermaid", "summary", "stride_spoofing" |
-| model | String | LLM model name |
-| input_tokens | Integer | |
-| output_tokens | Integer | |
-| total_tokens | Integer | |
-| tokens_billed | Integer | |
-| estimated_cost | Float | Based on pricing config |
-| duration_ms | Integer | |
-| created_at | DateTime | |
-
-#### **Category**
-| Column | Type | Notes |
-|--------|------|-------|
-| id | Integer (PK) | Auto-increment |
-| name | String | Category display name |
-| entity_type | String | "APP" or "ORG" |
-| order | Integer | Display order |
-
-#### **Question**
-| Column | Type | Notes |
-|--------|------|-------|
-| id | Integer (PK) | Auto-increment |
-| question | Text | Question text |
-| options | JSON (nullable) | Selectable options |
-| entity_type | String | "APP" or "ORG" |
-| category_id | FK → Category | |
-
-#### **Org**
-| Column | Type | Notes |
-|--------|------|-------|
-| id | Integer (PK) | Auto-increment |
-| name | String | Organization name |
-| status | String | PENDING / IN_PROGRESS / COMPLETED |
-
-#### **OrganizationResponse**
-| Column | Type | Notes |
-|--------|------|-------|
-| id | Integer (PK) | |
-| org_id | FK → Org | |
-| question_id | FK → Question | |
-| response | Text | |
-
-#### **OnboardingProgress**
-| Column | Type | Notes |
-|--------|------|-------|
-| id | Integer (PK) | |
-| org_id | FK → Org | |
-| entity_type | String | "APP" or "ORG" |
-| entity_id | String | App or Org ID |
-| category_id | FK → Category | |
-| status | String | PENDING / IN_PROGRESS / COMPLETED |
-
-#### **App**
-| Column | Type | Notes |
-|--------|------|-------|
-| id | Integer (PK) | |
-| name | String | |
-| org_id | FK → Org | |
-| status | String | PENDING / IN_PROGRESS / COMPLETED |
-
-#### **ApplicationResponse**
-| Column | Type | Notes |
-|--------|------|-------|
-| id | Integer (PK) | |
-| app_id | FK → App | |
-| question_id | FK → Question | |
-| response | Text | |
+`Base.metadata.create_all()` on startup creates any missing tables. There are no separate migration scripts — schema evolution happens through the `EnumAsString` pattern (VARCHAR columns) and additive column changes.
 
 ---
 
 ## 7. API Schemas (Pydantic)
 
-### 7.1 Standard Response (`schemas.py` + `utils.py`)
+### 7.1 Standard response — `atm/utils.py`
 
 ```python
-class ResponseModel(BaseModel):
-    status: str
-    code: int
-    message: str
-    data: Any = None
-
-def standard_response(status_code, message, data=None) -> JSONResponse
+standard_response(status_code=200, message="OK", data={...})
+# → JSONResponse({"status": 200, "message": "OK", "data": {...}}, status_code=200)
 ```
 
-### 7.2 Assessment Schemas (`api_schemas/api_v1/assessment.py`)
+### 7.2 Assessment — `api_schemas/api_v1/assessment.py`
 
-**Enums:**
-- `AssessmentType`: SECURITY, COMPLIANCE
-- `Framework`: STRIDE, PASTA, BUSINESS_LOGIC, LINDDUN, DREAD
-- `AssessmentState`: 8 states (mirrors DB enum)
-- `AssessmentStage`: 6 stages (mirrors DB enum)
-- `DiagramType`: ARCHITECTURE, SEQUENCE, DATA_FLOW, etc.
+Enums (string-valued Pydantic enums mirroring the DB enums):
+- `AssessmentType` — SECURITY, COMPLIANCE
+- `Framework` — STRIDE, BUSINESS_LOGIC (extensible)
+- `AssessmentState`, `AssessmentStage`
+- `DiagramType` — ARCHITECTURE, SEQUENCE, DATA_FLOW, …
 
-**Request Models:**
-- `AssessmentCreate` — multipart form data with `as_form()` class method: `type`, `framework`, `team`, `app_name`, `org_name`, `diagram_type`
+Request / response DTOs:
+- `AssessmentCreate` — multipart-form model with `as_form()` classmethod.
+- `AssessmentResponse` — full assessment record.
+- `ClarificationQuestion`, `AnswerSubmission` — clarification workflow.
 
-**Response Models:**
-- `AssessmentResponse` — full assessment data
-- `ClarificationQuestion` — question with options for user input
-- `AnswerSubmission` — user's answers to clarification questions
+### 7.3 Threat-modeling responses — `api_schemas/api_v1/ai_response.py`
 
-### 7.3 Threat Modeling Schemas (`api_schemas/api_v1/ai_response.py`)
-
-**Base Components:**
-- `Component` — name, purpose, data_assets, trust_level
+Base building blocks:
+- `Component` — name, purpose, data assets, trust level
 - `MermaidResponse`, `SummaryResponse`, `ComponentsResponse`, `QuestionsResponse`
+- `CoreThreatAnalysis` — Threat / Description / Impact / Likelihood / Mitigation (shared base)
 
-**Framework-Specific Threat Models:**
+Framework-specific threat items (currently the two implemented frameworks):
 
-| Framework | Pydantic Model | Key Fields |
-|-----------|---------------|------------|
-| STRIDE | `StrideThreatItem` | category (Spoofing/Tampering/Repudiation/Info Disclosure/DoS/Elevation), component_affected, threat, description, severity, likelihood, mitigations |
-| PASTA | `PastaThreatItem` | Risk/business focused fields |
-| DREAD | `DreadThreatItem` | Scoring dimensions (Damage/Reproducibility/Exploitability/Affected Users/Discoverability, each 0-10) |
-| LINDDUN | `LinddunThreatItem` | Privacy threat categories (Linkability/Identifiability/Non-repudiation/Detectability/Disclosure of info/Unawareness/Non-compliance) |
-| BUSINESS_LOGIC | `BusinessLogicThreatItem` | Business logic vulnerability fields |
-| VAST | `VastThreatItem` | Application vs Operational threats |
-| OCTAVE | `OctaveThreatItem` | Organizational/cyber-physical focus |
-| TRIKE | `TrikeThreatItem` | CRUD actions with acceptable risk |
+| Framework | Item | Extra fields |
+|---|---|---|
+| STRIDE | `StrideThreatItem` | `Component`, `ThreatCategory` ∈ {Spoofing, Tampering, Repudiation, Information Disclosure, Denial of Service, Elevation of Privilege} |
+| Business Logic | `BusinessLogicThreatItem` | `AbusedFeature`, `BusinessImpact`, `LogicFlawCategory`, … |
 
-**Wrapper Response:**
-- `ThreatModelAnalysis` — complete analysis combining all components
+Wrapper responses: `StrideThreatModelResponse`, `BusinessLogicThreatModelResponse`.
 
-### 7.4 Auth Schemas (`api_schemas/api_v1/auth_schema.py`)
-- `UserCreate` — email, password, name
-- `UserOut` — userId, email, name, role
-- `Token` — access_token, token_type
+### 7.4 Surface map — `api_schemas/api_v1/threat_modeling_schema.py`
 
-### 7.5 Review Schemas (`api_schemas/api_v1/reviewer.py`)
-- `AssessmentReviewerBase`, `AssessmentReviewerRead`, `AssessmentRead`
-- `ReviewSubmission` — status (APPROVED/REJECTED), comment
+- `SurfaceComponent`, `SurfaceBoundary`, `SurfaceMapPayload` — Threat Modeller Inventory payload, serialised into `surface_map.surface_map` JSON column.
 
-### 7.6 RAG Schemas (`api_schemas/api_v1/rag.py`)
-- `SearchRequest` — query, environment filter, document_type filter, num_candidates, k
-- `IngestResponse` — status, message, total_chunks, ignored_url
+### 7.5 Other schema modules
 
-### 7.7 Onboarding Schemas (`api_schemas/api_v1/onboarding.py`)
-- `OnboardingRequest` / `AppOnboardingRequest` — orgId/appId, category, responses[]
-- `OnboardingProgressResponse` / `AppOnboardingProgressResponse` — progress per category
+- `auth_schema.py` — `UserCreate`, `UserOut`, `Token`.
+- `rag.py` — `SearchRequest`, `IngestResponse`.
+- `onboarding.py` — `OnboardingRequest`, `CategoryProgress`, etc. (used for both org and app onboarding).
+- `org.py` — `OrgCreate`.
+- `app.py` — `AppOnboardRequest`, `AppOnboardResponse`.
 
-### 7.8 Organization Schemas (`api_schemas/api_v1/org.py`)
-- `OrgCreate` — name
-
-### 7.9 App Schemas (`api_schemas/api_v1/app.py`)
-- `AppOnboardRequest` — name, org_id
-- `AppOnboardResponse` — id, name, org_id, status
+There is no dedicated `reviewer.py` schema module — review payloads are declared inline in [reviews.py](blancService/atm/routers/reviews.py).
 
 ---
 
 ## 8. API Endpoints (Routers)
 
-### 8.1 Assessment Router (`/assessment`)
+### 8.1 Assessment router — `/assessment`
+
+| Method | Endpoint | Description |
+|---|---|---|
+| POST | `/assessment/new` | Create assessment with images (+ optional PDFs). Enqueues Phase-A per image + PDF ingestion. |
+| POST | `/assessment/extract-pdf-images` | Extract images from a PDF (base64 previews). |
+| GET  | `/assessment/list` | List assessments (search / state filter / pagination). |
+| DELETE | `/assessment/{id}` | Cascading delete (admin). |
+| GET  | `/assessment/{id}/progress` | Detailed per-image progress (state, stage, JSON blobs). |
+| GET  | `/assessment/{id}/status` | Lightweight polling. |
+| POST | `/assessment/{id}/images/{img_id}/answer` | Submit clarification answers → COMPLETED. |
+| PUT  | `/assessment/{id}/images/{img_id}/save-answers` | Save draft answers without state change. |
+| POST | `/assessment/{id}/answer` | Legacy: answer first NEEDS_INPUT image. |
+| POST | `/assessment/{id}/retry-analysis` | Retry all failed images. |
+| POST | `/assessment/{id}/continue` | Gate: promote all AWAITING_REVIEW images → Phase B. |
+| POST | `/assessment/{id}/images/{img_id}/continue` | Per-image Phase A → Phase B promotion. |
+| POST | `/assessment/{id}/images/{img_id}/retry` | Retry a single failed image. |
+| POST | `/assessment/{id}/images/{img_id}/auto-answer` | RAG-driven auto-answer for one image. |
+
+All mutating endpoints are gated by `require_assessment_owner`.
+
+### 8.2 Auth router — `/auth`
+
+| Method | Endpoint | Description |
+|---|---|---|
+| GET  | `/auth/google/login` | Redirect to Google consent screen. |
+| GET  | `/auth/google/callback` | OAuth callback → issues local JWT, redirects to frontend. |
+| POST | `/auth/register` | Email + password registration. |
+| POST | `/auth/login` | Email + password login. |
+| GET  | `/auth/admin` | Admin gate. |
+| GET  | `/auth/profile` | Current user profile. |
+
+Features: Google OAuth2 with optional email-domain restriction (`google_auth.allowed_domain`), JIT provisioning on first Google login, role assignment via `admin_users` config list.
+
+### 8.3 Threat-modeling router — `/threat-model`
+
+| Method | Endpoint | Description |
+|---|---|---|
+| GET  | `/threat-model/{id}/status` | Threat-modeling state. |
+| POST | `/threat-model/{id}/start` | Kick off generation → PROCESSING. |
+| GET  | `/threat-model/{id}/results/by-image` | Threats grouped per source image. |
+| POST | `/threat-model/{id}/reanalyze` | Clear existing threats and re-run. |
+| GET  | `/threat-model/{id}/export` | Export as CSV. |
+| GET  | `/threat-model/{id}/export/pdf` | Export as PDF (fpdf2). |
+| GET  | `/threat-model/{id}/usage` | LLM token + cost summary. |
+| GET  | `/threat-model/{id}/surface-map/{image_id}` | Fetch Threat Modeller Inventory JSON. |
+| PUT  | `/threat-model/{id}/surface-map/{image_id}` | Save / upsert inventory JSON. |
+| DELETE | `/threat-model/{id}/surface-map/{image_id}` | Delete inventory row. |
+| POST | `/threat-model/{id}/surface-map/{image_id}/generate` | LLM-generate a fresh inventory from the image + mermaid. |
+
+### 8.4 Review router — `/reviews`
+
+| Method | Endpoint | Description |
+|---|---|---|
+| GET  | `/reviews/assessments-under-review` | Assessments assigned to the current reviewer. |
+| POST | `/reviews/{id}/assign-reviewers` | Assign reviewers. |
+| GET  | `/reviews/reviewer-search` | Search users for reviewer picker. |
+| GET  | `/reviews/{id}/reviewers` | Assigned reviewers + statuses. |
+| POST | `/reviews/{id}/submit-review` | Submit approve / reject. |
+| POST | `/reviews/{id}/approve` | Single-reviewer final approve. |
+| POST | `/reviews/{id}/threats/{threat_id}/review` | Per-threat review. |
+| POST | `/reviews/{id}/threats/bulk-review` | Bulk review. |
+
+### 8.5 RAG router — `/rag`
+
+| Method | Endpoint | Description |
+|---|---|---|
+| POST | `/rag/{namespace}/{collection_id}/ingest` | Ingest a PDF into the vector DB. |
+| POST | `/rag/{namespace}/{collection_id}/search` | KNN search with filters. |
+
+### 8.6 Organization router — `/org`
+
+| Method | Endpoint | Description |
+|---|---|---|
+| POST | `/org/new` | Create organization. |
+| GET  | `/org/all` | Paginated list. |
+
+### 8.7 App router — `/app`
+
+| Method | Endpoint | Description |
+|---|---|---|
+| POST | `/app/onboard` | Create app under org. |
+| GET  | `/app/all` | Paginated list. |
+
+### 8.8 Application-onboarding router — `/app`
+
+| Method | Endpoint | Description |
+|---|---|---|
+| POST | `/app/onboarding` | Save responses. |
+| GET  | `/app/onboarding/{app_id}` | Progress per category. |
+| GET  | `/app/category/{cat_id}/name` | Category display name. |
+
+### 8.9 Onboarding router — `/onboarding`
+
+| Method | Endpoint | Description |
+|---|---|---|
+| POST | `/onboarding` | Save org onboarding responses. |
+| GET  | `/onboarding/{org_id}` | Org progress. |
+| GET  | `/category/{cat_id}/name` | Category display name. |
+
+### 8.10 Question router — `/questions`
 
 | Method | Endpoint | Description | Auth |
-|--------|----------|-------------|------|
-| `POST` | `/assessment/new` | Create assessment with images + optional PDFs | USER/ADMIN |
-| `POST` | `/assessment/extract-pdf-images` | Extract images from PDF (base64 preview) | USER/ADMIN |
-| `GET` | `/assessment/list` | List assessments with search/filters/pagination | USER/ADMIN |
-| `DELETE` | `/assessment/{id}` | Delete assessment (cascading) | ADMIN |
-| `GET` | `/assessment/{id}/progress` | Detailed progress with per-image data | USER/ADMIN |
-| `GET` | `/assessment/{id}/status` | Lightweight state/stage polling | USER/ADMIN |
-| `POST` | `/assessment/{id}/images/{img_id}/answer` | Submit clarification answers → COMPLETED | USER/ADMIN |
-| `PUT` | `/assessment/{id}/images/{img_id}/save-answers` | Save draft answers (no state change) | USER/ADMIN |
-| `POST` | `/assessment/{id}/answer` | Legacy: answer first NEEDS_INPUT image | USER/ADMIN |
-| `POST` | `/assessment/{id}/retry-analysis` | Retry all failed images | USER/ADMIN |
-| `POST` | `/assessment/{id}/images/{img_id}/retry` | Retry single failed image | USER/ADMIN |
-| `POST` | `/assessment/{id}/images/{img_id}/auto-answer` | Auto-answer using RAG context | USER/ADMIN |
+|---|---|---|---|
+| GET  | `/questions` | List by entity_type. | USER/ADMIN |
+| GET  | `/questions/grouped` | Grouped by category. | USER/ADMIN |
+| POST | `/questions` | Create question. | ADMIN |
+| POST | `/questions/bulk` | Bulk create. | ADMIN |
+| GET  | `/categories` | List categories. | USER/ADMIN |
+| POST | `/categories` | Create. | ADMIN |
+| PUT  | `/categories/{id}` | Update. | ADMIN |
+| DELETE | `/categories/{id}` | Delete. | ADMIN |
 
-### 8.2 Auth Router (`/auth`)
-
-| Method | Endpoint | Description | Auth |
-|--------|----------|-------------|------|
-| `GET` | `/auth/google/login` | Redirect to Google OAuth consent screen | None |
-| `GET` | `/auth/google/callback` | OAuth callback — issues local JWT | Google OAuth |
-| `POST` | `/auth/register` | Register new user (email/password) | None |
-| `POST` | `/auth/login` | Login with email/password | None |
-| `GET` | `/auth/admin` | Admin check endpoint | ADMIN |
-| `GET` | `/auth/profile` | Get current user profile | USER/ADMIN |
-
-**Features:**
-- Google OAuth2 with configurable email-domain restriction (`google_auth.allowed_domain`)
-- JIT (Just-In-Time) provisioning: auto-creates users on first Google login
-- Role assignment via `admin_users` config list
-
-### 8.3 Threat Modeling Router (`/threat-model`)
-
-| Method | Endpoint | Description | Auth |
-|--------|----------|-------------|------|
-| `GET` | `/{id}/status` | Get current threat modeling state | USER/ADMIN |
-| `POST` | `/{id}/start` | Initiate threat modeling → PROCESSING | USER/ADMIN |
-| `GET` | `/{id}/results/by-image` | Get threats grouped per image | USER/ADMIN |
-| `POST` | `/{id}/reanalyze` | Regenerate threats (clear + re-run) | USER/ADMIN |
-| `GET` | `/{id}/export` | Export threats as CSV | USER/ADMIN |
-| `GET` | `/{id}/usage` | Get LLM cost & token usage | USER/ADMIN |
-
-### 8.4 Review Router (`/reviews`)
-
-| Method | Endpoint | Description | Auth |
-|--------|----------|-------------|------|
-| `GET` | `/assessments-under-review` | List assessments assigned to current reviewer | USER/ADMIN |
-| `POST` | `/{id}/assign-reviewers` | Assign reviewers to assessment | USER/ADMIN |
-| `GET` | `/reviewer-search` | Search users for reviewer assignment | USER/ADMIN |
-| `GET` | `/{id}/reviewers` | Get assigned reviewers and status | USER/ADMIN |
-| `POST` | `/{id}/submit-review` | Submit approval/rejection | USER/ADMIN |
-| `POST` | `/{id}/approve` | Final single-reviewer approval | USER/ADMIN |
-| `POST` | `/{id}/threats/{threat_id}/review` | Review individual threat | USER/ADMIN |
-| `POST` | `/{id}/threats/bulk-review` | Bulk review multiple threats | USER/ADMIN |
-
-### 8.5 RAG Router (`/rag`)
+### 8.11 Enum router
 
 | Method | Endpoint | Description |
-|--------|----------|-------------|
-| `POST` | `/{namespace}/{collection}/ingest` | Ingest PDF into vector DB |
-| `POST` | `/{namespace}/{collection}/search` | Search vector DB with filters |
+|---|---|---|
+| GET | `/frameworks` | Threat frameworks. |
+| GET | `/assessment-types` | Assessment types. |
+| GET | `/all-enums` | Everything at once. |
 
-### 8.6 Organization Router (`/org`)
-
-| Method | Endpoint | Description |
-|--------|----------|-------------|
-| `POST` | `/org/new` | Create organization |
-| `GET` | `/org/all` | List all organizations with pagination |
-
-### 8.7 App Router (`/app`)
+### 8.12 Health-check router
 
 | Method | Endpoint | Description |
-|--------|----------|-------------|
-| `POST` | `/app/onboard` | Create app under organization |
-| `GET` | `/app/all` | List all apps with pagination |
+|---|---|---|
+| GET | `/healthcheck` | Returns 204 if DB is reachable. |
 
-### 8.8 Application Onboarding Router (`/app`)
-
-| Method | Endpoint | Description |
-|--------|----------|-------------|
-| `POST` | `/app/onboarding` | Save app onboarding responses |
-| `GET` | `/app/onboarding/{app_id}` | Get app progress for all categories |
-| `GET` | `/app/category/{cat_id}/name` | Get category name |
-
-### 8.9 Onboarding Router (`/onboarding`)
+### 8.13 LLM-usage router — `/llm-usage`
 
 | Method | Endpoint | Description |
-|--------|----------|-------------|
-| `POST` | `/onboarding` | Save org onboarding responses |
-| `GET` | `/onboarding/{org_id}` | Get org progress |
-| `GET` | `/category/{cat_id}/name` | Get category name |
-
-### 8.10 Question Router (`/questions`)
-
-| Method | Endpoint | Description | Auth |
-|--------|----------|-------------|------|
-| `GET` | `/questions` | List questions by entity_type | USER/ADMIN |
-| `GET` | `/questions/grouped` | Questions grouped by category | USER/ADMIN |
-| `POST` | `/questions` | Create single question | ADMIN |
-| `POST` | `/questions/bulk` | Bulk create questions | ADMIN |
-| `GET` | `/categories` | List categories | USER/ADMIN |
-| `POST` | `/categories` | Create category | ADMIN |
-| `PUT` | `/categories/{id}` | Update category | ADMIN |
-| `DELETE` | `/categories/{id}` | Delete category | ADMIN |
-
-### 8.11 Enum Router (`/api/v1/enums`)
-
-| Method | Endpoint | Description |
-|--------|----------|-------------|
-| `GET` | `/api/v1/enums/frameworks` | List available threat frameworks |
-| `GET` | `/api/v1/enums/assessment-types` | List assessment types |
-| `GET` | `/api/v1/enums/all-enums` | All enums combined |
-
-### 8.12 Health Check Router
-
-| Method | Endpoint | Description |
-|--------|----------|-------------|
-| `GET` | `/healthcheck` | Returns 204 if DB is available |
-
-### 8.13 LLM Usage Router (`/llm-usage`)
-
-| Method | Endpoint | Description |
-|--------|----------|-------------|
-| `GET` | `/llm-usage/{assessment_id}` | Get usage for single assessment |
-| `GET` | `/llm-usage/` | Get aggregated usage for all assessments |
+|---|---|---|
+| GET | `/llm-usage/{assessment_id}` | Per-assessment usage. |
+| GET | `/llm-usage/` | Aggregated across all assessments. |
 
 ---
 
 ## 9. Services (Business Logic)
 
-### 9.1 Assessment Service (`services/assessment_service.py`)
+All services are **class-based**, instantiated with a DB session per request.
 
-The central orchestrator for the assessment lifecycle.
+### `AssessmentService` — [assessment_service.py](blancService/atm/services/assessment_service.py)
 
-| Method | Description |
-|--------|-------------|
-| `create_new_assessment()` | Creates assessment record, saves uploaded images/PDFs to disk, creates DocumentAnalysis entries per image, queues IMAGE_ANALYSIS and PDF_INGESTION RMQ tasks |
-| `get_list()` | Fetches assessments with search term, state filter, pagination |
-| `delete_assessment()` | Cascading delete of assessment + related records |
-| `get_progress()` | Returns per-image detailed progress (state, stage, flow_diagram, summary, components, clarifications) |
-| `get_status()` | Lightweight state/stage polling for UI |
-| `process_answers()` | Processes user clarification answers, transitions per-image state NEEDS_INPUT → COMPLETED |
-| `save_answers_draft()` | Saves draft answers without state transition |
-| `auto_answer_image()` | Concurrent RAG-based auto-answering for a specific image's clarification questions |
-| `run_threat_modeling()` | Transitions assessment to PROCESSING/THREAT_MODELING, publishes RMQ task |
-| `get_threats_grouped_by_image()` | Returns threats organized by source image with analysis context |
-| `reanalyze_threat_modeling()` | Clears existing results and re-queues threat modeling |
-| `retry_analysis_pipeline()` | Retries all failed images in an assessment |
-| `retry_single_image()` | Retries a single failed image |
+Central orchestrator. Key methods (non-exhaustive):
 
-### 9.2 Auth Service (`services/auth_service.py`)
+- `create_new_assessment(...)` — persist assessment + document rows, save uploads via `StorageBackend`, publish `IMAGE_ANALYSIS_PHASE_A` (or `..._FROM_MERMAID`) + `PDF_INGESTION` messages.
+- `get_list(...)` / `delete_assessment(...)` / `get_progress(...)` / `get_status(...)`.
+- `process_answers(...)` / `save_answers_draft(...)` — clarification workflow.
+- `auto_answer_image(...)` — concurrent RAG-based answers per question.
+- `continue_phase_b(...)` / `continue_image_phase_b(...)` — AWAITING_REVIEW → Phase B gate.
+- `run_threat_modeling(...)` — publish `THREAT_MODELING` message.
+- `get_threats_grouped_by_image(...)` / `reanalyze_threat_modeling(...)`.
+- `retry_analysis_pipeline(...)` / `retry_single_image(...)`.
 
-| Method | Description |
-|--------|-------------|
-| `get_role_by_email()` | Maps email to role using `admin_users` config list |
-| `get_or_create_google_user()` | JIT provisioning — creates user on first Google OAuth login, syncs role on subsequent logins |
+### `AuthService` — [auth_service.py](blancService/atm/services/auth_service.py)
 
-### 9.3 Application Service (`services/application_service.py`)
+- `get_role_by_email(...)` — resolves role from `admin_users` config.
+- `get_or_create_google_user(...)` — JIT provisioning + role sync.
 
-| Method | Description |
-|--------|-------------|
-| `save_responses()` | Saves app onboarding responses, creates/updates OnboardingProgress |
-| `get_app_progress()` | Returns progress per category for an app |
-| `get_category_name()` | Returns category display name |
-| `update_app_onboarding_status()` | Marks category as COMPLETED if all questions answered |
+### `ApplicationService` — [application_service.py](blancService/atm/services/application_service.py)
 
-### 9.4 Onboarding Service (`services/onboarding_service.py`)
+- `save_responses(...)`, `get_app_progress(...)`, `get_category_name(...)`, `update_app_onboarding_status(...)`.
 
-| Method | Description |
-|--------|-------------|
-| `save_responses()` | Saves organization onboarding responses |
-| `get_org_progress()` | Returns org progress per category |
-| `get_category_name()` | Returns category display name |
-| `update_onboarding_status()` | Marks category as COMPLETED |
+### `OnboardingService` — [onboarding_service.py](blancService/atm/services/onboarding_service.py)
 
-### 9.5 Threat Modeling Service (`services/threat_modeling_service.py`)
-
-| Method | Description |
-|--------|-------------|
-| `delete_assessment_results()` | Cleanup before re-runs — deletes existing AssessmentResults |
+- `save_responses(...)`, `get_org_progress(...)`, `get_category_name(...)`, `update_onboarding_status(...)`.
 
 ---
 
 ## 10. Core Processing Pipeline
 
-### 10.1 Document Analysis (`core/document_analysis.py`)
+### 10.1 Document analysis — `core/document_analysis.py`
 
-Per-image LLM analysis pipeline with 6 stages:
-
-```
-Image → INITIALIZING → IMAGE_PROCESSING → [SUMMARIZING + COMPONENT_ANALYSIS + CLARIFICATION] → Auto-Answer → NEEDS_INPUT/COMPLETED
-```
-
-| Stage | Function | Description |
-|-------|----------|-------------|
-| 1. INITIALIZING | `analyze_single_image()` | Setup, read image bytes |
-| 2. IMAGE_PROCESSING | `image_to_mermaid()` | Converts architecture diagram to Mermaid flowchart/sequence/C4 |
-| 3. SUMMARIZING | `high_level_summary()` | Generates 4-5 line architectural summary |
-| 4. COMPONENT_ANALYSIS | `component_breakdown()` | Lists components with purpose, data assets, trust level |
-| 5. CLARIFICATION | `clarification_questions()` | Generates max 20 security assessment questions |
-| 6. Auto-Answer | `_auto_answer_questions()` | Concurrent RAG-based answering using vector DB context |
-
-**Key Features:**
-- Stages 3, 4, 5 run **in parallel** using `ThreadPoolExecutor`
-- Auto-answer uses RAG search per question with concurrency
-- Final state: `NEEDS_INPUT` (if unanswered questions remain) or `COMPLETED` (all auto-answered)
-
-### 10.2 Threat Modeling — Multi-Framework (`core/threat_modeling.py`)
-
-Assessment-level threat generation supporting multiple frameworks:
+Per-image LLM pipeline split into **two phases** with a user gate between them:
 
 ```
-All Images' Data → Merge Context → Per-Category LLM Calls (parallel) → Store Results → REVIEW
+Phase A:  PENDING → PROCESSING (image → Mermaid → components) → AWAITING_REVIEW
+                                                                    ↓  user "Next"
+Phase B:  AWAITING_REVIEW → PROCESSING (summary + clarification) → RAG auto-answer →
+                                        (NEEDS_INPUT | COMPLETED)
 ```
 
-**Framework Registry:**
+- **`IMAGE_ANALYSIS_PHASE_A`** — reads bytes, calls `image_to_mermaid` + `component_breakdown` skills.
+- **`IMAGE_ANALYSIS_PHASE_A_FROM_MERMAID`** — Studio flow: caller already supplied Mermaid text, so `image → mermaid` is skipped and only components are extracted from the diagram.
+- **`IMAGE_ANALYSIS_PHASE_B`** — `high_level_summary` + `clarification_questions` skills run in parallel via `ThreadPoolExecutor`. Then per-question RAG search calls `auto_answer_clarification` concurrently.
+- Terminal state per image is `NEEDS_INPUT` if any question is left unanswered, otherwise `COMPLETED`.
 
-| Framework | Categories | Pydantic Model |
-|-----------|------------|----------------|
-| STRIDE | Spoofing, Tampering, Repudiation, Information Disclosure, Denial of Service, Elevation of Privilege | `StrideThreatItem` |
-| LINDDUN | Linkability, Identifiability, Non-repudiation, Detectability, Disclosure of Information, Unawareness, Non-compliance | `LinddunThreatItem` |
-| DREAD | Damage Potential, Reproducibility, Exploitability, Affected Users, Discoverability | `DreadThreatItem` |
-| PASTA | Attack Simulation, Threat Analysis, Vulnerability Mapping | `PastaThreatItem` |
-| BUSINESS_LOGIC | Authentication Bypass, Authorization Flaws, Input Validation, Session Management, Race Conditions, Business Rule Violations | `BusinessLogicThreatItem` |
+### 10.2 Threat modeling — `core/threat_modeling.py`
 
-**Key Functions:**
+Assessment-level, multi-framework generator. The strategy pattern is expressed as a `FRAMEWORK_REGISTRY` of `ThreatFrameworkConfig` records:
 
-| Function | Description |
-|----------|-------------|
-| `fetch_all_image_analyses()` | Collects all DocumentAnalysis records for the assessment |
-| `merge_analysis_context()` | Combines multi-image data with source traceability into a single prompt context |
-| `generate_framework_prompt()` | Builds dynamic prompts per framework + category |
-| `_process_single_category()` | LLM call for one category with JSON parsing and retry |
-| `run_generic_analysis_pipeline()` | Framework-agnostic parallel execution across all categories |
-| `store_threat_model_results()` | Saves framework-specific threats to AssessmentResults with image traceability |
-| `threat_modeling_pipeline()` | Main entry point — orchestrates the full pipeline with state machine transitions |
+| Framework | Categories | Response model | Skill |
+|---|---|---|---|
+| **STRIDE** | Spoofing, Tampering, Repudiation, Information Disclosure, Denial of Service, Elevation of Privilege | `StrideThreatModelResponse` | `stride_threat_modeling` |
+| **BUSINESS_LOGIC** | Lifecycle & Orphaned Transitions, Sequential State Bypass, Missing Roles and Permission Checks, Replays of Idempotency Operations, Race Condition and Concurrency, Resource Quota Violations | `BusinessLogicThreatModelResponse` | `business_logic_threat_modeling` |
 
-### 10.3 Legacy STRIDE Service (`core/stride_service.py`)
+Adding a framework = one new entry in the registry (plus a Pydantic response model + skill file).
 
-Single-framework STRIDE-only implementation (predecessor to `threat_modeling.py`):
-- `run_stride_analysis_pipeline()` — parallel processing of 6 STRIDE categories
-- `threat_modeling_pipeline()` — main orchestrator with state transitions
+Pipeline entry points:
+
+- `fetch_all_image_analyses(...)` — collect every `DocumentAnalysis` row.
+- `merge_analysis_context(...)` — flatten multi-image data into a single prompt context, preserving per-image traceability.
+- `_process_single_category(...)` — one LLM call per category (structured output + JSON-parse retry).
+- `run_generic_analysis_pipeline(...)` — parallel execution across all categories in the registry.
+- `store_threat_model_results(...)` — write to `assessment_results` with `image_id` traceability.
+- `threat_modeling_pipeline(...)` — top-level orchestrator with state-machine transitions.
 
 ---
 
 ## 11. State Machine
 
-**File:** `core/state_machine.py`
+**File:** [blancService/atm/core/state_machine.py](blancService/atm/core/state_machine.py)
 
-Centralized state transition validation with two layers:
+Two independent transition maps enforced via `InvalidTransitionError`.
 
-### 11.1 Per-Image Transitions (IMAGE_TRANSITIONS)
-
-```
-PENDING → PROCESSING
-PROCESSING → NEEDS_INPUT | COMPLETED | FAILED
-NEEDS_INPUT → COMPLETED
-FAILED → PENDING
-```
-
-### 11.2 Assessment-Level Transitions (ASSESSMENT_TRANSITIONS)
+### 11.1 Per-image (`IMAGE_TRANSITIONS`)
 
 ```
-PENDING → PROCESSING
-PROCESSING → NEEDS_INPUT | COMPLETED | FAILED | REVIEW
-NEEDS_INPUT → COMPLETED
-COMPLETED → PROCESSING
-FAILED → PENDING | PROCESSING
-REVIEW → APPROVED | CHANGES_REQUESTED
-CHANGES_REQUESTED → REVIEW
+PENDING           → {PROCESSING}
+PROCESSING        → {AWAITING_REVIEW, NEEDS_INPUT, COMPLETED, FAILED}
+AWAITING_REVIEW   → {PROCESSING, FAILED}       # user hits "Next" → Phase B
+NEEDS_INPUT       → {COMPLETED}
+COMPLETED         → {}                          # terminal for image
+FAILED            → {PENDING}                   # retry resets
 ```
 
-### 11.3 Key Functions
+### 11.2 Assessment-level (`ASSESSMENT_TRANSITIONS`)
 
-| Function | Description |
-|----------|-------------|
-| `transition_image(db, assessment_id, image_id, new_state, new_stage, error_message)` | Validates and transitions per-image state, then derives assessment-level state |
-| `transition_assessment(db, assessment_id, new_state, new_stage, error_message)` | Validates and transitions assessment-level state |
-| `_sync_assessment_state(db, assessment_id)` | Derives overall assessment state from all image states (any FAILED → FAILED, any PROCESSING → PROCESSING, all COMPLETED → COMPLETED, any NEEDS_INPUT → NEEDS_INPUT) |
-| `get_image_states(db, assessment_id)` | Returns state info for all images |
-| `InvalidTransitionError` | Exception for invalid state transitions |
+```
+PENDING            → {PROCESSING}
+PROCESSING         → {NEEDS_INPUT, COMPLETED, FAILED, REVIEW}
+NEEDS_INPUT        → {COMPLETED}
+COMPLETED          → {PROCESSING}               # "Run Threat Modeling"
+FAILED             → {PENDING, PROCESSING}
+REVIEW             → {APPROVED, CHANGES_REQUESTED, PROCESSING}
+APPROVED           → {}                          # terminal
+CHANGES_REQUESTED  → {REVIEW}
+```
+
+### 11.3 Key helpers
+
+- `transition_image(db, assessment_id, image_id, new_state, new_stage, error_message)` — validates the image transition, then derives the assessment-level state.
+- `transition_assessment(db, assessment_id, new_state, new_stage, error_message)` — direct assessment transition.
+- `_sync_assessment_state(db, assessment_id)` — assessment state is derived from the aggregate of image states: any FAILED → FAILED; else any PROCESSING → PROCESSING; else any NEEDS_INPUT → NEEDS_INPUT; else any AWAITING_REVIEW → AWAITING_REVIEW; else all COMPLETED → COMPLETED.
+- `get_image_states(db, assessment_id)` — snapshot for UI/debug.
 
 ---
 
 ## 12. Message Queue (RabbitMQ)
 
-### 12.1 Task Types (`queue/rmq_message.py`)
+### 12.1 Task types — `queue/rmq_message.py`
 
 ```python
 class TaskType(str, Enum):
-    IMAGE_ANALYSIS = "IMAGE_ANALYSIS"
-    PDF_INGESTION = "PDF_INGESTION"
-    THREAT_MODELING = "THREAT_MODELING"
+    IMAGE_ANALYSIS_PHASE_A               # image → mermaid → components
+    IMAGE_ANALYSIS_PHASE_A_FROM_MERMAID  # skip image→mermaid, caller supplied mermaid text
+    IMAGE_ANALYSIS_PHASE_B               # summary + clarification
+    PDF_INGESTION                        # extract → chunk → ingest to vector DB
+    THREAT_MODELING                      # multi-framework threat generation
 ```
 
-**`RMQMessage` fields:** `task_type`, `assessment_id`, `image_id`, `image_path`, `pdf_path`, `filename`, `diagram_type`, `retry_count`
+`RMQMessage` fields: `task_type`, `assessment_id`, `image_id`, `image_path`, `pdf_path`, `filename`, `diagram_type`, `mermaid_text`, `retry_count`.
 
-### 12.2 Producer (`queue/producer.py`)
+### 12.2 Producer — `queue/producer.py`
 
-- `Producer` class — async message publishing to RabbitMQ
-- Connects to multiple RMQ hosts with fallback
-- Uses non-robust connections (fails fast)
-- Global producer instances pre-initialized per queue
-- **Fallback behavior:** If RMQ is unavailable, publishes to an in-process fallback queue for synchronous execution
+- Async publisher with connection fall-through across multiple hosts.
+- Uses **non-robust** connections (fails fast; recovery is the caller's problem).
+- Global pre-initialised producers per queue.
+- **Fallback:** if RabbitMQ is unavailable, messages are dispatched to an in-process fallback queue for synchronous execution — the app stays functional without RMQ (dev convenience).
 
-### 12.3 Consumer (`queue/consumer.py`)
+### 12.3 Consumer — `queue/consumer.py`
 
-- `Consumer` class — async message consumption with:
-  - QoS prefetch control
-  - Dead-letter queue (DLQ) for exhausted retries
-  - Requeue-based retry with exponential backoff (max 3 attempts)
-  - Delivery count tracking via `x-delivery-count` or `x-death` headers
+- Async consumer with prefetch (QoS) control.
+- Retry via requeue with exponential backoff, capped at 3 attempts.
+- Delivery count tracked via `x-delivery-count` and `x-death` headers.
+- Exhausted retries → dead-letter queue + ACK.
 
-**Retry Flow:**
-```
-Message received → Process
-  ├── Success → ACK
-  ├── Retriable error (retries < 3) → NACK + requeue
-  └── Max retries exhausted → Send to DLQ + ACK
-```
+### 12.4 Dispatcher — `queue/message_processing.py`
 
-### 12.4 Message Processing (`queue/message_processing.py`)
+Routes `RMQMessage` to handlers based on `task_type`. CPU-bound handlers run via `asyncio.to_thread(...)`. Assessment context is propagated to LLM usage tracking.
 
-Task dispatcher routes `RMQMessage` to handlers:
+### 12.5 Consumer orchestration — `queue/threaded_consumer_wrapper.py`
 
-| Task Type | Handler | Description |
-|-----------|---------|-------------|
-| `IMAGE_ANALYSIS` | `_handle_image_analysis()` | Calls `document_analysis.analyze_single_image()` |
-| `PDF_INGESTION` | `_handle_pdf_ingestion()` | Extracts text → chunks → ingests to vector DB |
-| `THREAT_MODELING` | `_handle_threat_modeling()` | Calls `threat_modeling_pipeline()` |
+`ThreadedConsumerWrapper` implements the `ManagedEntity` interface. It spins up a thread pool with per-queue concurrency (configurable, default 10). Each thread owns an independent asyncio event loop and `Consumer` instance.
 
-- Uses `asyncio.to_thread()` for CPU-bound tasks
-- Propagates assessment context for LLM usage tracking
+### 12.6 Custom thread pool — `queue/cancelable_thread_pool_exectuor.py`
 
-### 12.5 Consumer Orchestration (`queue/threaded_consumer_wrapper.py`)
-
-- `ThreadedConsumerWrapper` — implements `ManagedEntity` interface
-- Creates thread pool with per-queue concurrency (configurable, default 10)
-- Each thread runs an independent asyncio event loop with a Consumer instance
-
-### 12.6 Custom Thread Pool (`queue/cancelable_thread_pool_exectuor.py`)
-
-- `CancelableThreadPoolExecutor` — extends `ThreadPoolExecutor`
-- Tracks all futures for bulk cancellation
-- `clean_up()` — shuts down with `cancel_futures=True`
+`CancelableThreadPoolExecutor` extends `ThreadPoolExecutor`, tracks all futures, and exposes `clean_up()` for bulk cancellation on shutdown.
 
 ---
 
-## 13. LLM Integration
+## 13. LLM Client
 
-### 13.1 LLM Client (`core/llm_client/gpt_llm.py`)
+**Package:** [blancService/atm/core/llm_client/](blancService/atm/core/llm_client/)
 
-**Key Functions:**
+Provider-abstracted client stack, replacing the old single-file `gpt_llm.py`.
 
-| Function | Description |
-|----------|-------------|
-| `set_assessment_context(assessment_id)` | Sets thread-local context for LLM usage tracking |
-| `get_openai_client()` | Returns an OpenAI-compatible client configured with API-key auth |
-| `call_llm(system_prompt, user_prompt, response_format, images)` | Structured output parsing with optional image support (base64) |
-| `call_llm_text(system_prompt, user_prompt, reasoning_effort)` | Text generation with optional reasoning effort parameter |
-| `_build_llm_usage(call_type, response, duration_ms)` | Logs token usage and estimated cost to `LLMUsage` table |
+### 13.1 Layers
 
-**Features:**
-- Image support via base64 encoding
-- Token usage tracking per call
-- Cost calculation: `(input_tokens * prompt_rate + output_tokens * completion_rate) / 1_000_000`
-- Duration tracking in milliseconds
-- Thread-local assessment context for multi-threaded environments
+| Layer | File | Role |
+|---|---|---|
+| Provider ABC | `base.py` | `LLMProvider`, `LLMMessage`, `LLMResponse`, `ContentBlock` |
+| Facade | `client.py` | `LLMClient` bundling provider + attachments + usage + model resolution |
+| Model resolution | `client.py` | `ModelResolver` maps a logical **purpose** (`"vision"`, `"threat_modeling"`, …) to a `ModelSpec` (name + pricing) |
+| Assessment context | `client.py` | `set_assessment_context` / `get_assessment_context` backed by `contextvars.ContextVar` (works for sync + async) |
+| Attachments | `attachments.py` | Local + remote attachment loaders, MIME sniffing |
+| Auth | `auth.py` | Provider auth strategies (bearer / API key / OAuth) |
+| Usage sink | `usage.py` | `UsageSink` + `UsageRecord`; `NullUsageSink` for testing |
+| Providers | `providers/openai_provider.py`, `providers/litellm_provider.py` | Transport implementations |
+
+### 13.2 Usage
+
+```python
+from atm.core.llm_client import get_llm_client, set_assessment_context
+
+set_assessment_context(assessment_id)
+client = get_llm_client()
+response = client.parse_structured(
+    system_prompt=...,
+    user_prompt=...,
+    response_model=StrideThreatModelResponse,
+    images=[...],
+    purpose="threat_modeling",
+)
+```
+
+### 13.3 Usage tracking
+
+Every call is logged to `llm_usage` with input / output / total tokens, computed cost via `ModelSpec` pricing, and `duration_ms`. Cost formula: `(input_tokens * prompt_rate + output_tokens * completion_rate) / 1_000_000`.
 
 ---
 
 ## 14. RAG (Retrieval-Augmented Generation)
 
-### 14.1 PDF Extraction (`core/rag_client/extractor.py`)
+**Package:** [blancService/atm/core/rag_client/](blancService/atm/core/rag_client/)
 
-| Function | Description |
-|----------|-------------|
-| `extract_text_from_pdf_bytes(pdf_bytes)` | Extracts text from PDF using PyMuPDF, returns list of `(page_number, text)` |
-| `extract_images_from_pdf_bytes(pdf_bytes)` | Extracts images from PDF with size filtering (min 100px width/height) |
+### 14.1 PDF extraction — `extractor.py`
 
-### 14.2 Text Chunking (`core/rag_client/chunker.py`)
+- `extract_text_from_pdf_bytes(pdf_bytes)` → `List[(page_number, text)]` via PyMuPDF.
+- `extract_images_from_pdf_bytes(pdf_bytes)` → images filtered by min width/height.
 
-| Function | Description |
-|----------|-------------|
-| `generate_appsec_chunks(pages, assessment_id, source_file)` | Splits text into semantic chunks using LangChain's `RecursiveCharacterTextSplitter` |
+### 14.2 Chunking — `chunker.py`
 
-**Chunk metadata:** `assessment_id`, `source_file`, `page_number`, `chunk_index`, `ingested_at`  
-**Chunk ID format:** `APPSEC-{doc_hash}-P{page}-C{chunk}-{content_hash}`
+- `generate_appsec_chunks(pages, assessment_id, source_file)` uses `RecursiveCharacterTextSplitter`.
+- Metadata: `assessment_id`, `source_file`, `page_number`, `chunk_index`, `ingested_at`.
+- Chunk id: `APPSEC-{doc_hash}-P{page}-C{chunk}-{content_hash}`.
 
-### 14.3 Vector DB Client (`core/rag_client/vector_db.py`)
+### 14.3 Backends
 
-| Method | Description |
-|--------|-------------|
-| `ingest_batch(chunks)` | Uploads chunks in batches of 100 with retry (3 attempts, exponential backoff) |
-| `search(query, k, filters)` | KNN search with optional metadata filters |
-| `search_by_assessment(query, assessment_id, k)` | Filtered search scoped to a specific assessment |
+Selected via factory:
 
-**Features:**
-- Async operations with semaphore-based concurrency control
-- 20-minute ingestion timeout, 1-minute search timeout
-- Automatic batch splitting (100 chunks per batch)
+- **`local`** — [local_vector_db.py](blancService/atm/core/rag_client/local_vector_db.py) — Chroma-backed on-disk store, uses [embeddings.py](blancService/atm/core/rag_client/embeddings.py) for local embedding.
+- **`http`** — [vector_db.py](blancService/atm/core/rag_client/vector_db.py) — remote HTTP vector DB client with async operations, semaphore concurrency, 20-min ingest timeout / 1-min search timeout, automatic 100-chunk batching.
 
----
+### 14.4 Factory — `factory.py`
 
-## 15. Authentication & Authorization
+Resolution order for `get_rag_client()`:
 
-**File:** `core/auth/auth.py`
+1. `ATM_RAG_BACKEND` env var.
+2. `config.rag_config.backend` (default `"local"`).
 
-### 15.1 Password Handling
-- Argon2 hashing via `passlib` (`CryptContext`)
+Lookup order for the resolved name:
 
-### 15.2 JWT Token Management
-- Algorithm: HS256
-- Expiry: 300 minutes (configurable)
-- `create_access_token(data: dict)` — generates JWT with `sub` (user email) and `exp`
+1. In-process registrations via `register_rag_backend(...)` (tests / DI).
+2. Entry-point plugins in the `atm.rag_backends` group.
+3. Built-ins: `local`, `http`.
 
-### 15.3 FastAPI Dependencies
-- `get_current_user(token)` — extracts and validates JWT, returns User object
-- `require_roles(*roles)` — role-based access control dependency factory
+Plugins expose `build(config: AppConfig) -> RAGBackend`.
 
-### 15.4 Google OAuth2 Flow
-1. `GET /auth/google/login` → redirects to Google consent screen
-2. Google redirects back to `GET /auth/google/callback` with authorization code
-3. Server exchanges code for Google tokens, validates the configured email domain
-4. JIT provisioning: creates user if not exists, assigns role from config
-5. Issues local JWT token
-6. Redirects to frontend with JWT in URL parameter
+Backend surface: `ingest_batch`, `search`, `search_by_assessment` — matches `VectorDBClient`.
 
 ---
 
-## 16. CRUD Operations
+## 15. Storage Backends
 
-### 16.1 Assessment CRUD (`crud/assessment_crud.py`)
+**Package:** [blancService/atm/core/storage/](blancService/atm/core/storage/)
 
-| Function | Description |
-|----------|-------------|
-| `create_assessment_entry(db, assessment_data)` | Creates Assessment record with UUID |
-| `create_document_entry(db, doc_data)` | Creates AssessmentDocument record |
-| `create_image_analysis_entry(db, analysis_data)` | Creates DocumentAnalysis per image |
-| `get_assessment_by_id(db, assessment_id)` | Retrieves single assessment |
-| `get_assessments_by_user(db, user_id, search, state, page, size)` | List with filters |
-| `get_analysis_by_assessment_id(db, assessment_id)` | All DocumentAnalysis for assessment |
-| `get_analysis_by_image_id(db, assessment_id, image_id)` | Single image analysis |
-| `get_threats_by_assessment_id(db, assessment_id)` | All AssessmentResults |
-| `delete_assessment(db, assessment_id)` | Cascading delete |
-| `update_analysis_clarifications(db, assessment_id, image_id, clarification)` | Updates clarification JSON |
+Pluggable file storage abstraction. Every upload (images, PDFs) goes through this layer.
 
-### 16.2 Application CRUD (`crud/application_crud.py`)
-
-| Function | Description |
-|----------|-------------|
-| `get_app(db, app_id)` | Get app by ID |
-| `get_response(db, app_id, question_id)` | Get specific response |
-| `create_response(db, response_data)` | Create new response |
-| `update_response(db, response_id, new_value)` | Update existing response |
-| `get_total_questions_by_category(db, category_id, entity_type)` | Count questions in category |
-| `count_answered_questions(db, entity_id, category_id, entity_type)` | Count answered questions |
-| `get_progress(db, entity_id, category_id, entity_type)` | Get onboarding progress |
-| `create_progress(db, progress_data)` | Create progress record |
-| `update_progress_status(db, progress_id, status)` | Update progress status |
-| `get_all_responses(db, entity_id, entity_type)` | Get all responses for entity |
-| `get_question(db, question_id)` | Get question by ID |
-| `get_category(db, category_id)` | Get category by ID |
-
----
-
-## 17. Prompt Templates
-
-**File:** `prompt/prompt.py`
-
-| Prompt | Purpose | Output Format |
-|--------|---------|---------------|
-| `IMAGE_TO_MERMAID_PROMPT` | Converts architecture diagram images to Mermaid syntax | Mermaid flowchart/sequence/C4 |
-| `HIGH_LEVEL_SUMMARY_PROMPT` | Generates 4-5 line architectural summary from image | Plain text |
-| `COMPONENT_BREAKDOWN_PROMPT` | Lists components with purpose, data assets, trust level | Structured JSON (Component[]) |
-| `CLARIFICATION_QUESTIONS_PROMPT` | Generates max 20 security assessment questions | Structured JSON (Question[]) |
-| `AUTO_ANSWER_CLARIFICATION_PROMPT` | Auto-answers questions using RAG-retrieved context | Structured JSON (Answer) |
-| `STRIDE_PROMPT` | Legacy STRIDE-specific threat generation template | Structured JSON (StrideThreatItem[]) |
-
-Each framework in `threat_modeling.py` also has a **system role prompt** defined in the framework registry that provides domain-specific instructions.
-
----
-
-## 18. Utilities
-
-### 18.1 FastAPI Event Emitter (`util/fastapi_event_emitter.py`)
-
-- `FastapiEventEmitter` — manages startup/shutdown lifecycle for `ManagedEntity` instances
-- `start()` — called on application startup
-- `stop()` — called on application shutdown
-- `add_managed_entity(entity)` — registers entity for lifecycle management
-
-### 18.2 Managed Entity (`util/managed_entity.py`)
-
-- `ManagedEntity` — abstract base class with `start()` and `stop()` methods
-- Implemented by `ThreadedConsumerWrapper` and potentially other lifecycle-managed components
-
-### 18.3 Standard Response (`schemas.py` + `utils.py`)
+### 15.1 Interface — `base.py`
 
 ```python
-# Standard API response wrapper
-standard_response(status_code=200, message="Success", data={"key": "value"})
-# Returns: JSONResponse with {"status": "success", "code": 200, "message": "Success", "data": {...}}
+class StorageBackend(ABC):
+    def save(content, assessment_id, filename, original_filename="") -> StorageResult
+    def read(stored_path) -> bytes
+    def exists(stored_path) -> bool
+    def delete(stored_path) -> bool
+    def build_public_url(stored_path) -> str | None
+```
+
+`StorageResult` carries `stored_path`, `absolute_path`, `backend`, and (for remote backends) `public_url` / `document_id`.
+
+### 15.2 Backends
+
+- **`local_storage.py`** — writes under `config.storage.local_upload_dir` (default `uploads/`); served via the hardened `/uploads` static mount.
+- **`s3_storage.py`** — writes to an S3 bucket configured in `S3Config`.
+
+### 15.3 Factory — `factory.py`
+
+Backend name comes from `config.storage.backend` (`"local"` or `"s3"`).
+
+---
+
+## 16. OCR
+
+**Package:** [blancService/atm/core/ocr/](blancService/atm/core/ocr/)
+
+PaddleOCR wrapper, kept **out of the request path** to avoid the multi-second cold-start.
+
+- **`paddle_cli.py`** — standalone CLI that owns the PaddleOCR imports; defines model / output dir defaults.
+- **`paddle_runner.py`** — in-process library wrapper (`extract_ocr_context(...)`) that returns the same JSON the CLI would write.
+- Env override: `ATM_OCR_MODELS_DIR` to point at a prewarmed weights directory (baked image / mounted volume / test fixtures).
+- PaddleOCR itself is imported lazily on first use — small-image flows that never touch OCR pay zero import cost.
+
+---
+
+## 17. Skills (Prompt System)
+
+**Package:** [blancService/atm/skills/](blancService/atm/skills/)
+
+Prompts are packaged as **skills** — Markdown files with YAML frontmatter (metadata) and a Markdown body (instructions). Loaded once and cached.
+
+### 17.1 API
+
+```python
+from atm.skills import get_skill, list_skills
+
+skill = get_skill("image_to_mermaid")
+skill.name              # "image_to_mermaid"
+skill.description       # ...
+skill.version           # "1.3"
+skill.input_vars        # ["diagram_type"]
+skill.response_model_ref# "atm.api_schemas...:MermaidResponse" or None
+prompt = skill.render(diagram_type="flowchart TD")
+model_cls = skill.response_model()  # resolved Pydantic class, if declared
+```
+
+### 17.2 Plugin discovery
+
+External packages can ship skills without touching this repo:
+
+1. Set `ATM_SKILLS_DIRS` — `os.pathsep`-separated list of directories.
+2. Register an entry point in the `atm.skills` group pointing at a module that exposes `skills_dir: str | Path` (or a callable returning one).
+
+Resolution order (first hit wins): `ATM_SKILLS_DIRS` dirs → entry-point dirs → built-in `definitions/` dir.
+
+Template variables use `string.Template` (`$var` / `${var}`) so literal `{`/`}` in JSON/Mermaid examples pass through untouched.
+
+### 17.3 Built-in skills
+
+| Skill | Purpose |
+|---|---|
+| `image_to_mermaid` | Convert architecture image → Mermaid diagram |
+| `image_to_mermaid_auto` | Image → Mermaid without human hints (Studio auto-mode) |
+| `high_level_summary` | 4–5 line architectural summary |
+| `component_breakdown` | Components + trust level + data assets |
+| `clarification_questions` | ≤ 20 security-assessment questions |
+| `auto_answer_clarification` | Answer questions using RAG context |
+| `stride_threat_modeling` | STRIDE threat generation |
+| `business_logic_threat_modeling` | Business-logic vulnerability generation |
+| `threat_analysis` | Generic framework-agnostic threat prompt |
+| `surface_discovery` | Threat Modeller Inventory (surface map) generation |
+
+---
+
+## 18. Authentication & Authorization
+
+**File:** [blancService/atm/core/auth/auth.py](blancService/atm/core/auth/auth.py)
+
+- **Passwords** — Argon2 via `passlib` (`CryptContext`).
+- **JWT** — HS256, expiry configurable (`jwt_config.access_token_expire_minutes`).
+- **Deps** —
+  - `get_current_user(token)` — extract + validate JWT → `User`.
+  - `require_roles(*roles)` — role-based dependency factory (used by `question_router`, admin endpoints).
+  - `require_assessment_owner` — used across `assessment_router`, `threat_modeling_router`, `llm_usage_router` to bind an assessment to the calling user.
+- **Google OAuth2 flow** —
+  1. `GET /auth/google/login` → redirect to consent screen.
+  2. `GET /auth/google/callback` → exchange code, validate `hd` claim against `google_auth.allowed_domain`.
+  3. JIT provisioning (`AuthService.get_or_create_google_user`) → assign role from `admin_users` config.
+  4. Issue local JWT.
+  5. Redirect to frontend with the JWT in a URL parameter.
+
+---
+
+## 19. CRUD Layer
+
+### 19.1 `crud/assessment_crud.py`
+
+`create_assessment_entry`, `create_document_entry`, `create_image_analysis_entry`, `get_assessment_by_id`, `get_assessments_by_user`, `get_analysis_by_assessment_id`, `get_analysis_by_image_id`, `get_threats_by_assessment_id`, `delete_assessment`, `update_analysis_clarifications`, etc.
+
+### 19.2 `crud/application_crud.py`
+
+App / question / progress helpers: `get_app`, `get_response`, `create_response`, `update_response`, `get_total_questions_by_category`, `count_answered_questions`, `get_progress`, `create_progress`, `update_progress_status`, `get_all_responses`, `get_question`, `get_category`, etc.
+
+### 19.3 `crud/surface_map_crud.py`
+
+Threat Modeller Inventory helpers:
+
+- `get_surface_map(db, assessment_id, image_id)`
+- `upsert_surface_map(db, assessment_id, image_id, payload: SurfaceMapPayload)` — creates or replaces the JSON blob.
+- `delete_surface_map(db, assessment_id, image_id)`
+
+---
+
+## 20. Utilities
+
+### 20.1 `util/managed_entity.py`
+
+`ManagedEntity` ABC with `start()` / `stop()`; used by `ThreadedConsumerWrapper` and any other lifecycle-managed component wired into `FastapiEventEmitter`.
+
+### 20.2 `util/file_sniff.py`
+
+MIME / file-type detection used by the storage layer to safely categorise uploaded files.
+
+### 20.3 `atm/utils.py`
+
+`standard_response(status_code, message, data=None)` — the canonical `{status, message, data}` envelope wrapped in a `JSONResponse`.
+
+---
+
+## 21. End-to-End Flow
+
+```
+┌─── PHASE 1: Assessment creation ─────────────────────────────────────────────┐
+│                                                                              │
+│  POST /assessment/new                                                        │
+│    ├─ Save images  via StorageBackend (uploads/{assessment_id}/input/…)      │
+│    ├─ Save PDFs    via StorageBackend (uploads/{assessment_id}/docs/…)       │
+│    ├─ Create Assessment row (state=PENDING, stage=INITIALIZING)              │
+│    ├─ Create DocumentAnalysis row per image (state=PENDING)                  │
+│    ├─ Create AssessmentDocument row per PDF                                  │
+│    ├─ Publish IMAGE_ANALYSIS_PHASE_A (or ..._FROM_MERMAID) per image         │
+│    └─ Publish PDF_INGESTION per PDF                                          │
+└──────────────────────────────────────────────────────────────────────────────┘
+                                    │
+                                    ▼
+┌─── PHASE 2a: Image analysis — Phase A (per image) ───────────────────────────┐
+│  Consumer picks up IMAGE_ANALYSIS_PHASE_A                                    │
+│    ├─ Stage IMAGE_PROCESSING     — image → Mermaid                           │
+│    ├─ Stage COMPONENT_ANALYSIS  — component breakdown                        │
+│    └─ transition_image → AWAITING_REVIEW    (pauses for user "Next")         │
+└──────────────────────────────────────────────────────────────────────────────┘
+                                    │
+                                    ▼
+┌─── PHASE 2b: PDF ingestion (parallel) ───────────────────────────────────────┐
+│  Consumer picks up PDF_INGESTION                                             │
+│    ├─ PyMuPDF extract text pages                                             │
+│    ├─ Chunk (RecursiveCharacterTextSplitter)                                 │
+│    └─ Ingest 100-chunk batches into RAG backend                              │
+└──────────────────────────────────────────────────────────────────────────────┘
+                                    │
+                                    ▼
+┌─── PHASE 3: User reviews Phase-A output, hits "Next" ────────────────────────┐
+│  POST /assessment/{id}/continue           (all images)                       │
+│  or   /assessment/{id}/images/{img_id}/continue                              │
+│    └─ Publishes IMAGE_ANALYSIS_PHASE_B per promoted image                    │
+└──────────────────────────────────────────────────────────────────────────────┘
+                                    │
+                                    ▼
+┌─── PHASE 4: Image analysis — Phase B ────────────────────────────────────────┐
+│  Consumer picks up IMAGE_ANALYSIS_PHASE_B                                    │
+│    ├─ Parallel (ThreadPoolExecutor):                                         │
+│    │     ├─ SUMMARIZING     — high_level_summary skill                       │
+│    │     └─ CLARIFICATION  — clarification_questions skill                   │
+│    ├─ Concurrent RAG search + auto_answer_clarification per question         │
+│    └─ transition_image →  NEEDS_INPUT (unanswered) or COMPLETED              │
+│                                                                              │
+│  Assessment-level state derived from all image states.                       │
+└──────────────────────────────────────────────────────────────────────────────┘
+                                    │
+                                    ▼
+┌─── PHASE 5: Clarification (if NEEDS_INPUT) ──────────────────────────────────┐
+│  GET  /assessment/{id}/progress                                              │
+│  POST /assessment/{id}/images/{img_id}/answer                                │
+│  POST /assessment/{id}/images/{img_id}/auto-answer                           │
+│  PUT  /assessment/{id}/images/{img_id}/save-answers        (draft only)      │
+│                                                                              │
+│  Once every image is COMPLETED, assessment → COMPLETED.                      │
+└──────────────────────────────────────────────────────────────────────────────┘
+                                    │
+                                    ▼
+┌─── PHASE 6: Threat modeling ─────────────────────────────────────────────────┐
+│  POST /threat-model/{id}/start                                               │
+│    ├─ transition_assessment → PROCESSING / THREAT_MODELING                   │
+│    └─ Publish THREAT_MODELING                                                │
+│                                                                              │
+│  Consumer picks up THREAT_MODELING                                           │
+│    ├─ Fetch all DocumentAnalysis rows                                        │
+│    ├─ Merge context per image (with traceability)                            │
+│    ├─ For each framework category (parallel):                                │
+│    │     ├─ Render skill                                                     │
+│    │     ├─ LLM call w/ structured-output parsing (retry on failure)         │
+│    │     └─ Persist to assessment_results with image_id                      │
+│    └─ transition_assessment → REVIEW                                         │
+│                                                                              │
+│  Read results:                                                               │
+│  GET /threat-model/{id}/results/by-image                                     │
+│  GET /threat-model/{id}/export        (CSV)                                  │
+│  GET /threat-model/{id}/export/pdf    (PDF)                                  │
+│  GET /threat-model/{id}/usage         (cost)                                 │
+└──────────────────────────────────────────────────────────────────────────────┘
+                                    │
+                                    ▼
+┌─── PHASE 7: Review & approval ───────────────────────────────────────────────┐
+│  POST /reviews/{id}/assign-reviewers                                         │
+│  GET  /reviews/assessments-under-review                                      │
+│                                                                              │
+│  Reviewer actions:                                                           │
+│    ├─ Per-threat:   POST /reviews/{id}/threats/{tid}/review                  │
+│    ├─ Bulk:         POST /reviews/{id}/threats/bulk-review                   │
+│    ├─ Approve:      POST /reviews/{id}/approve       → APPROVED (terminal)   │
+│    └─ Reject:       POST /reviews/{id}/submit-review → CHANGES_REQUESTED     │
+│                                                       → re-assign → REVIEW   │
+└──────────────────────────────────────────────────────────────────────────────┘
+```
+
+### 21.1 Composite state diagram
+
+```
+                       ┌──────────┐
+     Assessment ──────▶│  PENDING │
+     Created           └────┬─────┘
+                            │
+                            ▼
+                     ┌──────────────┐
+                     │  PROCESSING  │  (per-image)
+                     └──┬─────┬───┬──┬─────────┐
+                        │     │   │  │         │
+                        ▼     ▼   ▼  ▼         ▼
+                  ┌──────────────┐ ┌──────────┐ ┌──────────┐
+                  │AWAITING_     │ │COMPLETED │ │NEEDS_    │  … FAILED
+                  │  REVIEW      │ └────┬─────┘ │  INPUT   │
+                  └──────┬───────┘      │       └────┬─────┘
+                         │ user Next    │            │ answer
+                         ▼              │            ▼
+                    (Phase B)           │       ┌──────────┐
+                                        │       │COMPLETED │
+                                        │       └────┬─────┘
+                                        └────────────┤
+                                                     │ "Run Threat Modeling"
+                                                     ▼
+                                             ┌──────────────┐
+                                             │  PROCESSING  │
+                                             │(THREAT_MODEL)│
+                                             └───┬──────┬───┘
+                                                 ▼      ▼
+                                          ┌──────┐  ┌────────┐
+                                          │FAILED│  │ REVIEW │
+                                          └──────┘  └─┬────┬─┘
+                                                      │    │
+                                              approve │    │ reject
+                                                      ▼    ▼
+                                                ┌────────┐ ┌────────────────┐
+                                                │APPROVED│ │CHANGES_        │
+                                                │(final) │ │  REQUESTED     │
+                                                └────────┘ └───────┬────────┘
+                                                                    │ re-assign
+                                                                    ▼
+                                                               ┌────────┐
+                                                               │ REVIEW │
+                                                               └────────┘
 ```
 
 ---
 
-## 19. End-to-End Flow
+## 22. Deployment
 
-### 19.1 Complete Assessment Lifecycle
+### 22.1 Dockerfile
 
-```
-┌─── PHASE 1: Assessment Creation ─────────────────────────────────────────────┐
-│                                                                               │
-│  User uploads images + PDFs                                                   │
-│  POST /assessment/new                                                         │
-│    ├── Save images to disk (uploads/{assessment_id}/input/)                   │
-│    ├── Save PDFs to disk (uploads/{assessment_id}/supporting_docs/)           │
-│    ├── Create Assessment record (state=PENDING)                               │
-│    ├── Create DocumentAnalysis per image (state=PENDING)                      │
-│    ├── Create AssessmentDocument per PDF                                      │
-│    ├── Publish IMAGE_ANALYSIS RMQ message per image                           │
-│    └── Publish PDF_INGESTION RMQ message per PDF                              │
-│                                                                               │
-└───────────────────────────────────────────────────────────────────────────────┘
-                                    │
-                                    ▼
-┌─── PHASE 2: Image Analysis (per-image, parallel) ────────────────────────────┐
-│                                                                               │
-│  RMQ Consumer picks up IMAGE_ANALYSIS task                                    │
-│    ├── Stage 1: INITIALIZING — Setup, read image bytes                        │
-│    ├── Stage 2: IMAGE_PROCESSING — LLM: image → Mermaid diagram              │
-│    ├── Stage 3-5: PARALLEL —                                                  │
-│    │   ├── SUMMARIZING — LLM: high-level architecture summary                │
-│    │   ├── COMPONENT_ANALYSIS — LLM: component breakdown                     │
-│    │   └── CLARIFICATION — LLM: security clarification questions             │
-│    ├── Auto-answer — RAG search per question (concurrent)                     │
-│    ├── Save all results to DocumentAnalysis                                   │
-│    └── Transition state → NEEDS_INPUT or COMPLETED                            │
-│                                                                               │
-│  State derivation: Assessment state synced from all image states              │
-│    ├── Any FAILED → FAILED                                                    │
-│    ├── Any PROCESSING → PROCESSING                                            │
-│    ├── Any NEEDS_INPUT → NEEDS_INPUT                                          │
-│    └── All COMPLETED → COMPLETED                                              │
-│                                                                               │
-└───────────────────────────────────────────────────────────────────────────────┘
-                                    │
-                                    ▼
-┌─── PHASE 2b: PDF Ingestion (parallel with image analysis) ───────────────────┐
-│                                                                               │
-│  RMQ Consumer picks up PDF_INGESTION task                                     │
-│    ├── Extract text from PDF (PyMuPDF)                                        │
-│    ├── Chunk text (RecursiveCharacterTextSplitter)                             │
-│    └── Ingest chunks to Vector DB (batches of 100)                            │
-│                                                                               │
-└───────────────────────────────────────────────────────────────────────────────┘
-                                    │
-                                    ▼
-┌─── PHASE 3: Clarification (if NEEDS_INPUT) ──────────────────────────────────┐
-│                                                                               │
-│  User views clarification questions per image                                 │
-│  GET /assessment/{id}/progress                                                │
-│                                                                               │
-│  Options:                                                                     │
-│    ├── Manual answer: POST /assessment/{id}/images/{img_id}/answer            │
-│    ├── Auto-answer:   POST /assessment/{id}/images/{img_id}/auto-answer       │
-│    └── Draft save:    PUT  /assessment/{id}/images/{img_id}/save-answers       │
-│                                                                               │
-│  On submit → image state transitions NEEDS_INPUT → COMPLETED                  │
-│  When all images COMPLETED → assessment state → COMPLETED                     │
-│                                                                               │
-└───────────────────────────────────────────────────────────────────────────────┘
-                                    │
-                                    ▼
-┌─── PHASE 4: Threat Modeling ─────────────────────────────────────────────────┐
-│                                                                               │
-│  User triggers threat modeling                                                │
-│  POST /threat-model/{id}/start                                                │
-│    ├── Transition assessment → PROCESSING / THREAT_MODELING                   │
-│    └── Publish THREAT_MODELING RMQ message                                    │
-│                                                                               │
-│  RMQ Consumer picks up THREAT_MODELING task                                   │
-│    ├── Fetch all DocumentAnalysis for assessment                              │
-│    ├── Merge context from all images (with traceability)                      │
-│    ├── For each framework category (parallel):                                │
-│    │   ├── Generate framework-specific prompt                                 │
-│    │   ├── LLM call with structured output parsing                            │
-│    │   └── Parse threats with retry on failure                                │
-│    ├── Store threats to AssessmentResults (with image_id traceability)         │
-│    └── Transition assessment → REVIEW                                         │
-│                                                                               │
-│  View results:                                                                │
-│  GET /threat-model/{id}/results/by-image                                      │
-│  GET /threat-model/{id}/export (CSV)                                          │
-│  GET /threat-model/{id}/usage (LLM cost)                                      │
-│                                                                               │
-└───────────────────────────────────────────────────────────────────────────────┘
-                                    │
-                                    ▼
-┌─── PHASE 5: Review & Approval ───────────────────────────────────────────────-┐
-│                                                                               │
-│  Assign reviewers:                                                            │
-│  POST /reviews/{id}/assign-reviewers                                          │
-│                                                                               │
-│  Reviewer views assigned assessments:                                         │
-│  GET /reviews/assessments-under-review                                        │
-│                                                                               │
-│  Reviewer actions:                                                            │
-│    ├── Review individual threat: POST /reviews/{id}/threats/{tid}/review      │
-│    ├── Bulk review threats: POST /reviews/{id}/threats/bulk-review            │
-│    ├── Approve: POST /reviews/{id}/approve → assessment → APPROVED            │
-│    └── Reject:  POST /reviews/{id}/submit-review (REJECTED)                   │
-│                     → assessment → CHANGES_REQUESTED                          │
-│                     → re-assign reviewers → back to REVIEW                    │
-│                                                                               │
-└───────────────────────────────────────────────────────────────────────────────┘
-```
+See [blancService/Dockerfile](blancService/Dockerfile). Highlights: Python 3.12 slim, MariaDB client + build deps, non-root `atm` user (uid `10001`), `entrypoint.sh` wraps startup.
 
-### 19.2 Complete State Diagram
+### 22.2 Compose
 
-```
-                          ┌──────────┐
-          Assessment ────→│  PENDING  │
-          Created         └────┬─────┘
-                               │ pipeline starts
-                               ▼
-                          ┌──────────────┐
-                          │  PROCESSING  │
-                          │ (per-image)  │
-                          └──┬───┬───┬──┘
-                    ┌────────┘   │   └────────┐
-                    ▼            ▼            ▼
-              ┌──────────┐ ┌──────────┐ ┌──────────┐
-              │NEEDS_INPUT│ │COMPLETED │ │  FAILED  │
-              └────┬─────┘ └────┬─────┘ └────┬─────┘
-                   │ answer     │             │ retry
-                   ▼            │             ▼
-              ┌──────────┐     │        ┌──────────┐
-              │COMPLETED │     │        │  PENDING  │
-              └────┬─────┘     │        └──────────┘
-                   │           │
-                   └─────┬─────┘
-                         │ "Run Threat Modeling"
-                         ▼
-                   ┌──────────────┐
-                   │  PROCESSING  │
-                   │ (THREAT_     │
-                   │  MODELING)   │
-                   └──┬───────┬──┘
-                      │       │
-                      ▼       ▼
-                ┌──────────┐ ┌──────────┐
-                │  FAILED  │ │  REVIEW  │
-                └──────────┘ └──┬───┬──┘
-                                │   │
-                   approve ─────┘   └───── reject
-                   ▼                       ▼
-              ┌──────────┐       ┌───────────────────┐
-              │ APPROVED │       │CHANGES_REQUESTED  │
-              │ (final)  │       └────────┬──────────┘
-              └──────────┘                │ re-assign
-                                          ▼
-                                     ┌──────────┐
-                                     │  REVIEW  │
-                                     └──────────┘
-```
+The root [docker-compose.yml](docker-compose.yml) brings up MariaDB, RabbitMQ, the API, and the Next.js studio. Config lives in [blancService/atm/config/docker.yml](blancService/atm/config/docker.yml) (copied from [docker.yml.example](blancService/atm/config/docker.yml.example)) and is mounted read-only into the API container.
 
----
-
-## 20. Deployment
-
-### 20.1 Dockerfile
-
-```dockerfile
-FROM python:3.12-slim-bookworm
-
-RUN apt update -y && \
-    apt install -y curl libmariadb-dev build-essential && \
-    apt clean
-
-COPY requirements.txt .
-RUN python3 -m pip install -r requirements.txt
-
-WORKDIR /app
-RUN mkdir -p /app/uploads
-
-COPY main.py .
-COPY atm/ ./atm/
-
-ENTRYPOINT ["python3", "main.py"]
-```
-
-### 20.2 Infrastructure Requirements
+### 22.3 Infrastructure
 
 | Component | Details |
-|-----------|---------|
+|---|---|
 | **Python** | 3.12 |
-| **MariaDB** | Connection pool size 100, recycle 300s |
-| **RabbitMQ** | Port 5672, queue "ATM", concurrency 10 |
-| **OpenAI API** | OpenAI-compatible endpoint configured via `openaiconfig` |
-| **Vector DB** | Optional local or remote instance for RAG |
-| **File Storage** | Local `/app/uploads` directory |
+| **MariaDB** | Any 10.6+; pool size / recycle from `db_conf` |
+| **RabbitMQ** | Optional in dev — in-process fallback publishes tasks synchronously if RMQ is unavailable |
+| **LLM** | Any OpenAI-compatible endpoint (OpenAI, LiteLLM proxy, Azure, self-hosted) |
+| **RAG backend** | Local Chroma (default) or remote HTTP vector DB |
+| **Storage** | Local filesystem (default) or S3 |
+| **OCR** | PaddleOCR weights (optional) |
 
-### 20.3 Environment Variables
+### 22.4 Environment variables
 
-| Variable | Purpose | Values |
-|----------|---------|--------|
-| `ENV` | Config source selection | `local`, `stage` |
-| `OPENAI_API_KEY` / `ATM_LLM_API_KEY` | LLM provider API key | Secret string |
-| `ATM_RAG_API_KEY` | Optional vector DB bearer token | Secret string |
-| `http_proxy` / `https_proxy` | Proxy for outbound requests | Set in Dockerfile |
+| Variable | Purpose |
+|---|---|
+| `ATM_CONFIG_PATH` | Absolute path to any YAML config (highest priority). |
+| `ENV` | Selects `atm/config/<ENV>.yml` (default `config`; Compose uses `docker`). |
+| `OPENAI_API_KEY` / provider-specific keys | LLM credentials (referenced by config). |
+| `ATM_RAG_BACKEND` | Override `config.rag_config.backend` (`local` / `http` / plugin name). |
+| `ATM_SKILLS_DIRS` | Extra skill-definition directories (path-separated). |
+| `ATM_OCR_MODELS_DIR` | Override PaddleOCR weights location. |
+| `FRONTEND_URL` | Used in CORS + OAuth redirects (also readable via `config.frontend.base_url`). |
+| `http_proxy` / `https_proxy` | Proxy for outbound requests. |
 
-### 20.4 Local Development Setup
+### 22.5 Local development
 
 ```bash
-# 1. Create virtual environment
+cd blancService
 python3.12 -m venv env
 source env/bin/activate
-
-# 2. Install dependencies
 pip install -r requirements.txt
 
-# 3. Start MariaDB (required)
-# Ensure MariaDB is running on localhost:3306 with database 'atm'
+# Ensure MariaDB is running (localhost:3306) with a database matching your config.
+# RabbitMQ optional — the in-process fallback runs tasks inline if it's absent.
 
-# 4. Start RabbitMQ (optional — fallback queue used if unavailable)
-# docker run -d -p 5672:5672 -p 15672:15672 rabbitmq:management
+cp atm/config/config.yml.example atm/config/config.yml   # first-time setup
+# Edit config.yml — API keys, JWT secret, admin_users, DB / RMQ, etc.
 
-# 5. Run the application
-python3 main.py
-# Server starts at http://localhost:8000
+python3 main.py    # http://localhost:8000
 ```
 
----
-
-## 21. Dependencies
-
-### Core Framework
-| Package | Version | Purpose |
-|---------|---------|---------|
-| fastapi | 0.121.0 | Web framework |
-| uvicorn | 0.40.0 | ASGI server |
-| starlette | 0.49.3 | ASGI toolkit (FastAPI dependency) |
-| pydantic | 2.11.9 | Data validation |
-
-### Database
-| Package | Version | Purpose |
-|---------|---------|---------|
-| SQLAlchemy | 2.0.43 | ORM |
-| mariadb | 1.1.14 | MariaDB connector |
-
-### Message Queue
-| Package | Version | Purpose |
-|---------|---------|---------|
-| aio-pika | 9.5.7 | Async RabbitMQ client |
-| aiormq | 6.9.2 | Low-level AMQP |
-
-### AI/LLM
-| Package | Version | Purpose |
-|---------|---------|---------|
-| openai | 1.108.1 | OpenAI API client |
-| langchain-text-splitters | 0.3.11 | Text chunking for RAG |
-| tiktoken | 0.12.0 | Token counting |
-
-### Authentication
-| Package | Version | Purpose |
-|---------|---------|---------|
-| PyJWT | 2.11.0 | JWT token handling |
-| passlib | 1.7.4 | Password hashing (Argon2) |
-| google-auth | 2.48.0 | Google OAuth2 |
-| argon2-cffi | 25.1.0 | Argon2 hashing backend |
-| cryptography | 46.0.4 | Crypto primitives |
-
-### Document Processing
-| Package | Version | Purpose |
-|---------|---------|---------|
-| PyMuPDF | 1.23.8 | PDF text/image extraction |
-| python-docx | 1.2.0 | DOCX handling |
-| fpdf2 | 2.8.7 | PDF generation |
-
-### HTTP/Networking
-| Package | Version | Purpose |
-|---------|---------|---------|
-| httpx | 0.28.1 | Async HTTP client |
-| requests | 2.32.5 | Sync HTTP client |
-
-### Utilities
-| Package | Version | Purpose |
-|---------|---------|---------|
-| PyYAML | 6.0.2 | YAML parsing |
-| colorlog | 6.9.0 | Colored logging |
-| tenacity | 9.1.2 | Retry logic |
-| python-multipart | 0.0.22 | Multipart form parsing |
-| orjson | 3.11.7 | Fast JSON serialization |
+The database schema is created automatically on first boot by `Base.metadata.create_all()`. Enum columns use `EnumAsString` (VARCHAR), so adding new enum members later needs no schema update.
 
 ---
 
-*Generated from codebase analysis — ATM Service v1.0*
+## 23. Dependencies
+
+See [blancService/requirements.txt](blancService/requirements.txt) for the fully-pinned list. Groups at a glance:
+
+- **Web** — fastapi, uvicorn, starlette, pydantic v2, python-multipart, orjson
+- **DB** — SQLAlchemy 2.x, mariadb
+- **Queue** — aio-pika, aiormq
+- **LLM** — openai, litellm, tiktoken, langchain-text-splitters
+- **RAG** — chromadb (local backend), httpx (remote backend)
+- **Auth** — PyJWT, passlib[argon2], argon2-cffi, google-auth, cryptography
+- **Docs** — PyMuPDF (extraction), python-docx, fpdf2 (export)
+- **OCR** — paddleocr, paddlepaddle (optional, lazy-loaded)
+- **Storage** — boto3 (S3 backend)
+- **Utilities** — PyYAML, colorlog, tenacity, requests, Pillow
+
+---
+
+*Generated from a walkthrough of the current codebase.*

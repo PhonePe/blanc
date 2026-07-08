@@ -67,19 +67,6 @@ As a result, threat modeling sessions often become one of two extremes:
 
 Effective threat modeling is not about finding every possible threat - it is about identifying the most relevant risks for the design being reviewed.
 
-Blanc. is designed to make threat modeling **collaborative** - enabling Product, Business, Architecture, Engineering, Compliance, Privacy, and Security teams to work together through shared artifacts, structured questions, and contextual threats.
-
-With Blanc., teams can:
-
-* Start from design-level artifacts such as architecture diagrams, sequence diagrams, PRDs, and BRDs
-* Ask structured questions that capture the security context of each component and data flow
-* Identify threats that are relevant to the specific design, rather than repeating generic checklists
-* Track assessments across applications, features, and feature versions
-* Collaborate on assumptions, mitigations, and design changes throughout the development lifecycle
-* Maintain organization-wide visibility into threat modeling progress and outstanding work
-
-Blanc. is not designed to replace security expertise with automated threat lists.
-
 It is designed to help teams apply security expertise earlier, consistently, and collaboratively—so that threat modeling becomes a continuous design practice rather than a one-time compliance activity.
 
 

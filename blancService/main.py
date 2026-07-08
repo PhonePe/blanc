@@ -34,8 +34,9 @@ LoggingConfig.configure_logging()
 # Ensure the schema is present on first boot. `atm.db.database` already
 # ran CREATE DATABASE IF NOT EXISTS on import; here we ask SQLAlchemy to
 # emit CREATE TABLE for anything the models declare that the DB doesn't
-# have yet. Idempotent — existing tables are left alone. Column-level
-# migrations (like the state/stage widening) are still your problem.
+# have yet. Idempotent — existing tables are left alone. Enum-typed
+# columns are declared via `EnumAsString` (VARCHAR under the hood), so
+# adding new Python enum members needs no schema change.
 Base.metadata.create_all(bind=engine)
 logger.info("Schema ready — Base.metadata.create_all() complete.")
 
