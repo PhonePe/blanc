@@ -6,13 +6,13 @@
 #   2. Creates a Python venv under blancService/env and installs requirements —
 #      this includes PaddleOCR + paddlepaddle + opencv-python-headless.
 #   3. Installs the frontend's node_modules.
-#   4. Copies blancService/atm/config/config.yml.example -> config.yml if the
+#   4. Copies blancService/blanc/config/config.yml.example -> config.yml if the
 #      real config doesn't exist yet, so the app can boot.
 #
 # What this does NOT do:
 #   * Install MariaDB / RabbitMQ — bring your own, or use `docker compose up
 #     mariadb rabbitmq` from the compose file.
-#   * Populate secrets — edit blancService/atm/config/config.yml after this
+#   * Populate secrets — edit blancService/blanc/config/config.yml after this
 #     script finishes, or export OPENAI_API_KEY / JWT_SECRET_KEY in your
 #     shell before running native-run.sh.
 #
@@ -24,7 +24,7 @@ REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 BACKEND_DIR="${REPO_ROOT}/blancService"
 FRONTEND_DIR="${REPO_ROOT}/blancUi"
 VENV_DIR="${BACKEND_DIR}/env"
-CONFIG_DIR="${BACKEND_DIR}/atm/config"
+CONFIG_DIR="${BACKEND_DIR}/blanc/config"
 
 # ── pretty-print helpers ─────────────────────────────────────────────
 BOLD="\033[1m"; DIM="\033[2m"; GREEN="\033[32m"; YELLOW="\033[33m"; RED="\033[31m"; RESET="\033[0m"
@@ -193,5 +193,5 @@ fi
 printf "\n${BOLD}${GREEN}✓ Build complete.${RESET}\n\n"
 printf "Next steps:\n"
 printf "  1. Start MariaDB + RabbitMQ (or run: ${DIM}docker compose up -d mariadb rabbitmq${RESET})\n"
-printf "  2. Verify secrets in ${DIM}blancService/atm/config/config.yml${RESET}\n"
+printf "  2. Verify secrets in ${DIM}blancService/blanc/config/config.yml${RESET}\n"
 printf "  3. Run the stack: ${DIM}./native-run.sh${RESET}\n\n"

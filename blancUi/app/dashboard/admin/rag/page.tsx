@@ -24,7 +24,7 @@ export default function SecurityRagPage() {
         <KBUploadCard kb={kb} />
       </div>
 
-      <FooterPill label="ATM RAG · Security" tone="rose" />
+      <FooterPill label="Blanc RAG · Security" tone="rose" />
     </PageShell>
   );
 }

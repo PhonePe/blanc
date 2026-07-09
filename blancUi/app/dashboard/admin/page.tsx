@@ -340,7 +340,7 @@ export default function AdminPage() {
           </Section>
       </div>
 
-      <FooterPill label="ATM Admin · v1" tone="violet" />
+      <FooterPill label="Blanc Admin · v1" tone="violet" />
     </PageShell>
   )
 }

@@ -207,7 +207,7 @@ function withReadableSvgText(svg: string, mode: MermaidTheme): string {
       return svg
     }
 
-    svgRoot.classList.add("atm-mermaid-svg")
+    svgRoot.classList.add("blanc-mermaid-svg")
     svgRoot.querySelectorAll("text, tspan").forEach((node) => {
       node.setAttribute("fill", textColor)
       node.setAttribute(

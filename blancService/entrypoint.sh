@@ -1,23 +1,23 @@
 #!/usr/bin/env bash
 # Container entrypoint for the blancService.
 #
-# All configuration lives in /app/atm/config/docker.yml, which
+# All configuration lives in /app/blanc/config/docker.yml, which
 # docker-compose.yml mounts from the host at
-# `./blancService/atm/config/docker.yml`. The image itself does NOT
+# `./blancService/blanc/config/docker.yml`. The image itself does NOT
 # ship a docker.yml — the mount is the source of truth.
 #
-# We point ATM_CONFIG_PATH at that file and let atm.config_parsers
+# We point BLANC_CONFIG_PATH at that file and let blanc.config_parsers
 # do the rest.
 set -euo pipefail
 
-CONFIG_FILE=/app/atm/config/docker.yml
+CONFIG_FILE=/app/blanc/config/docker.yml
 
 if [[ ! -f "$CONFIG_FILE" ]]; then
     echo "✗ Config file not found at $CONFIG_FILE" >&2
     echo "" >&2
     echo "  On the host:" >&2
-    echo "    cp blancService/atm/config/docker.yml.example \\" >&2
-    echo "       blancService/atm/config/docker.yml" >&2
+    echo "    cp blancService/blanc/config/docker.yml.example \\" >&2
+    echo "       blancService/blanc/config/docker.yml" >&2
     echo "  then edit docker.yml (OpenAI key, JWT secret, etc.) and" >&2
     echo "  re-run: docker compose up --build" >&2
     exit 1
@@ -40,7 +40,7 @@ if grep -q 'CHANGE_ME_to_a_48_char' "$CONFIG_FILE"; then
     exit 1
 fi
 
-export ATM_CONFIG_PATH="$CONFIG_FILE"
+export BLANC_CONFIG_PATH="$CONFIG_FILE"
 export ENV=docker
 
 echo "✓ Config loaded from $CONFIG_FILE"

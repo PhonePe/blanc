@@ -249,7 +249,7 @@ export interface AssessmentFormProps {
    *  When set, the form hides the image-upload section entirely and
    *  posts `mermaid_texts[]` to /assessment/new. */
   mermaidTexts?: string[];
-  /** Called after a successful mermaid-mode submit — the ATM Studio
+  /** Called after a successful mermaid-mode submit — the Blanc Studio
    *  parent uses this to close its dialog. Image-mode callers can
    *  ignore it (the form router.pushes on its own). */
   onSubmitted?: (assessmentId: string) => void;
@@ -334,7 +334,7 @@ export function AssessmentForm({ mermaidTexts, onSubmitted }: AssessmentFormProp
       .toLowerCase()
       .replace(/[^a-z0-9]+/g, "-")
       .replace(/^-|-$/g, "");
-    return `ATM-${slug}-${Date.now().toString(36).slice(-4)}`;
+    return `BLANC-${slug}-${Date.now().toString(36).slice(-4)}`;
   }, [assessmentName]);
 
   // Clean up PDF preview URL on unmount

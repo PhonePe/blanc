@@ -20,7 +20,7 @@ export function AuthLoading() {
           <ShieldAlert className="size-8" />
         </motion.div>
         <div className="text-center">
-          <p className="text-sm font-semibold text-foreground">ATM Threat Engine</p>
+          <p className="text-sm font-semibold text-foreground">Blanc Threat Engine</p>
           <p className="text-xs text-muted-foreground mt-1">Verifying your session...</p>
         </div>
         <motion.div

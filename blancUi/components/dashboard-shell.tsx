@@ -10,7 +10,7 @@
  *     <PageHero icon={Settings2} badge="Admin Console" title="…" description="…" />
  *     <SectionEyebrow eyebrow="01 · Onboarding" title="…" description="…" />
  *     { ...page content... }
- *     <FooterPill label="ATM Admin · v1" />
+ *     <FooterPill label="Blanc Admin · v1" />
  *   </PageShell>
  */
 

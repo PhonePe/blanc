@@ -1,11 +1,11 @@
 # Blanc — full-stack compose file.
 #
-#   cp blancService/atm/config/docker.yml.example \
-#      blancService/atm/config/docker.yml
+#   cp blancService/blanc/config/docker.yml.example \
+#      blancService/blanc/config/docker.yml
 #   # edit docker.yml — OpenAI key, JWT secret, admin email, etc.
 #   docker compose up --build
 #
-# All app configuration lives in blancService/atm/config/docker.yml.
+# All app configuration lives in blancService/blanc/config/docker.yml.
 # No .env file is used. Infra credentials for the mariadb / rabbitmq
 # containers are hardcoded below and match the defaults referenced by
 # docker.yml.example. Change both sides together if you want different
@@ -26,10 +26,10 @@ services:
     image: mariadb:11
     restart: unless-stopped
     environment:
-      MARIADB_ROOT_PASSWORD: atm-root
-      MARIADB_DATABASE: atm
-      MARIADB_USER: atm
-      MARIADB_PASSWORD: atm
+      MARIADB_ROOT_PASSWORD: blanc-root
+      MARIADB_DATABASE: blanc
+      MARIADB_USER: blanc
+      MARIADB_PASSWORD: blanc
     ports:
       - "127.0.0.1:3306:3306"
     volumes:
@@ -60,16 +60,33 @@ services:
       start_period: 30s
 
   api:
+    # NOTE: attempted `platform: linux/amd64` for Rosetta 2 emulation to
+    # bypass the linux/arm64 paddlepaddle PIR SIGSEGV. Fell over because
+    # the x86_64 paddle wheel needs AVX2/AVX-512 SIMD and Docker Desktop's
+    # QEMU emulator on M-series doesn't provide them (build failed at the
+    # paddle import sanity check with exit code 132 / SIGILL).
+    # To try again on macOS 13+: enable Docker Desktop → Settings →
+    # General → "Use Rosetta for x86_64/amd64 emulation on Apple Silicon",
+    # then uncomment the `platform:` line below.
+    #
+    # platform: linux/amd64
     build:
       context: ./blancService
       dockerfile: Dockerfile
     restart: unless-stopped
     ports:
       - "127.0.0.1:8000:8000"
+    environment:
+      # PaddlePaddle's PIR loader segfaults on Linux/arm64 Docker for the
+      # PP-OCRv6 weights we ship. Vision LLM covers diagrams fine on its
+      # own. Flip to 0/false once paddle-3.3+ arm64 wheels land, OR
+      # after enabling Rosetta-for-amd64 in Docker Desktop and un-
+      # commenting the `platform: linux/amd64` line above.
+      BLANC_DISABLE_OCR: "1"
     volumes:
       # Mount the user's docker.yml into the container as the sole
       # config source. Read-only — the app never writes it.
-      - ./blancService/atm/config/docker.yml:/app/atm/config/docker.yml:ro
+      - ./blancService/blanc/config/docker.yml:/app/blanc/config/docker.yml:ro
       # Persist uploads and the Chroma RAG store across container rebuilds.
       - api_uploads:/app/uploads
       - api_chroma:/app/data/chroma

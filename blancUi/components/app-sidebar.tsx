@@ -57,8 +57,8 @@ const workspaceItems: NavItem[] = [
     icon: IconChecklist,
   },
   {
-    name: "ATM Studio",
-    url: "/dashboard/atmstudio",
+    name: "Blanc Studio",
+    url: "/dashboard/blancstudio",
     icon: IconSparkles,
   },
 ];

@@ -1,6 +1,7 @@
 "use client"
 
 import React, { useEffect, useMemo, useState } from "react"
+import { useRouter } from "next/navigation"
 import { motion, AnimatePresence } from "framer-motion"
 
 // shadcn/ui
@@ -75,6 +76,8 @@ function parseOptions(options: string | null): string[] {
 
 // ---------- Main Component ----------
 export default function OrgOnboardingModern() {
+  const router = useRouter()
+
   // State
   const [isSetupMode, setIsSetupMode] = useState(true)
   const [orgNameInput, setOrgNameInput] = useState("")
@@ -178,16 +181,22 @@ export default function OrgOnboardingModern() {
   }, [])
 
   // ---------- API ----------
-  const fetchQuestions = async () => {
+  // Returns the fetched list so callers (e.g. `handleCreateOrg`) can
+  // decide what to do next when there are zero questions. We do NOT
+  // redirect from inside this function — that would make the initial
+  // page-load useEffect bounce the user before they can even see the
+  // "create org" form.
+  const fetchQuestions = async (): Promise<Question[]> => {
     try {
       const json = await api.get(`/questions?entity_type=ORG`)
-      if (json?.data) {
-        setQuestions(json.data)
-        const firstCat = json.data[0]?.category_id
-        if (firstCat && !selectedCategory) setSelectedCategory(firstCat)
-      }
+      const list: Question[] = Array.isArray(json?.data) ? json.data : []
+      setQuestions(list)
+      const firstCat = list[0]?.category_id
+      if (firstCat && !selectedCategory) setSelectedCategory(firstCat)
+      return list
     } catch (e: any) {
       toast.error(e?.message || "Failed to load questions")
+      return []
     }
   }
 
@@ -234,9 +243,28 @@ export default function OrgOnboardingModern() {
         return
       }
 
+      const createdName = json.data.name ?? orgNameInput.trim()
       setOrgId(json.data.id)
-      setDisplayOrgName(json.data.name ?? orgNameInput.trim())
-      await fetchQuestions()
+      setDisplayOrgName(createdName)
+
+      // Fetch questions first so we can branch based on whether an
+      // admin has authored any ORG-level questions yet.
+      const list = await fetchQuestions()
+
+      if (list.length === 0) {
+        // No questions to answer — pop a confirmation, then bounce to
+        // the admin console so someone can seed them. The 2s delay
+        // gives the toast time to actually be read.
+        toast.success(
+          `Organization "${createdName}" created. Redirecting to questions setup…`,
+          { duration: 2000 },
+        )
+        setTimeout(() => {
+          router.push("/dashboard/admin/questions?entity_type=ORG")
+        }, 2000)
+        return
+      }
+
       await loadOrgData(json.data.id)
       setIsSetupMode(false)
     } catch (e: any) {

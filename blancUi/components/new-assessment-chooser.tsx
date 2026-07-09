@@ -17,7 +17,7 @@ import { cn } from "@/lib/utils";
 /**
  * Modal shown on entry to /dashboard/assessment/new. Two options:
  *
- *   1. Create a new architecture / sequence diagram in ATM Studio.
+ *   1. Create a new architecture / sequence diagram in Blanc Studio.
  *   2. Upload an existing image (or PDF containing one).
  */
 export interface NewAssessmentChooserProps {
@@ -46,7 +46,7 @@ export function NewAssessmentChooser({
             Start a new assessment
           </DialogTitle>
           <DialogDescription className="mt-1 text-sm text-muted-foreground">
-            Bring an existing diagram, or design one from scratch in ATM Studio.
+            Bring an existing diagram, or design one from scratch in Blanc Studio.
           </DialogDescription>
         </DialogHeader>
 
@@ -57,8 +57,8 @@ export function NewAssessmentChooser({
             icon={PenLine}
             title="Create new diagram"
             description="Draw a fresh architecture or sequence diagram in Mermaid, then hand it straight to the analyzer."
-            cta="Open ATM Studio"
-            onClick={() => router.push("/dashboard/atmstudio")}
+            cta="Open Blanc Studio"
+            onClick={() => router.push("/dashboard/blancstudio")}
           />
           <ChoiceCard
             index="02"

@@ -37,14 +37,14 @@ FROM node:20-bookworm-slim AS runtime
 WORKDIR /app
 
 # Non-root user
-RUN useradd -r -u 10002 -m -d /home/atmui atmui
+RUN useradd -r -u 10002 -m -d /home/blancui blancui
 
 # Copy just the standalone bundle — everything the server needs.
-COPY --from=builder --chown=atmui:atmui /usr/src/.next/standalone ./
-COPY --from=builder --chown=atmui:atmui /usr/src/run.sh /app/run.sh
+COPY --from=builder --chown=blancui:blancui /usr/src/.next/standalone ./
+COPY --from=builder --chown=blancui:blancui /usr/src/run.sh /app/run.sh
 RUN chmod +x /app/run.sh
 
-USER atmui
+USER blancui
 
 ENV NODE_ENV=production \
     PORT=3000

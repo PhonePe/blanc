@@ -12,8 +12,6 @@
 [![Stars](https://img.shields.io/github/stars/blanc-project/blanc?style=for-the-badge&logo=github&logoColor=FFFFFF&color=FFFFFF&labelColor=555555&cacheSeconds=300)](https://github.com/blanc-project/blanc/stargazers)
 ![Open issues](https://img.shields.io/github/issues/blanc-project/blanc?style=for-the-badge&color=FFFFFF&labelColor=555555)
 ![PRs welcome](https://img.shields.io/badge/PRs-welcome-FFFFFF?style=for-the-badge&labelColor=555555)
-
-<br/>
 <!-- 
 [![Join Discord](https://img.shields.io/badge/Join-Discord-5865F2?style=for-the-badge&logo=discord&logoColor=FFFFFF&labelColor=555555)](https://discord.gg/)
 &nbsp;
@@ -22,8 +20,6 @@
 <br/>
 
 **[Quick Start](#quick-start)** · **[Why Blanc](#why-blanc)** · **[Framework Coverage](#framework-coverage)** · **[How It Works](#how-blanc-works)** · **[Docs](blancService/CODEBASE_DOCUMENTATION.md)**
-
-<br/>
 
 </div>
 

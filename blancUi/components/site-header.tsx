@@ -17,7 +17,7 @@ const routeTitles: Record<string, string> = {
   "/dashboard/admin/rag": "Admin RAG",
   "/dashboard/admin/questions": "Question Manager",
   "/dashboard/onboarding": "Onboarding",
-  "/dashboard/atmstudio": "ATM Studio",
+  "/dashboard/blancstudio": "Blanc Studio",
 }
 
 export function SiteHeader() {

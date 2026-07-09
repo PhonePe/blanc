@@ -1163,7 +1163,22 @@ const EnumInfo = <T extends string>({
 
 // --- ThreatModel Inventory ---
 
-const ThreatModelInventory = ({ code, persistKey, assessmentId, imageId }: { code: string; persistKey?: string; assessmentId?: string; imageId?: string }) => {
+const ThreatModelInventory = ({
+  code,
+  persistKey,
+  assessmentId,
+  imageId,
+  imageState,
+  imageStage,
+}: {
+  code: string;
+  persistKey?: string;
+  assessmentId?: string;
+  imageId?: string;
+  /** Backend state of THIS image row — controls the "still generating" placeholder. */
+  imageState?: string;
+  imageStage?: string;
+}) => {
   const storageKey = persistKey ? `tm-inventory:${persistKey}` : null
   // API persistence is enabled only when both ids are known. Otherwise we
   // silently fall back to localStorage so the UI still works in isolation.
@@ -1252,6 +1267,51 @@ const ThreatModelInventory = ({ code, persistKey, assessmentId, imageId }: { cod
     run()
     return () => { cancelled = true }
   }, [storageKey, apiEnabled, assessmentId, imageId])
+
+  // Re-hydrate when Phase A finishes.
+  // The initial hydrate above runs once and, if the surface_map row didn't
+  // yet exist at first mount, leaves the inventory empty. The parent poll
+  // (`fetchData` in the page) flips `imageState` from PROCESSING to
+  // AWAITING_REVIEW / COMPLETED once the backend has persisted the row —
+  // that's our cue to fetch again so the user doesn't have to reload the
+  // page to see the auto-populated components.
+  useEffect(() => {
+    if (!apiEnabled || !initialized) return
+    // Only trigger when Phase A is definitely done. Anything not PENDING
+    // and not PROCESSING means the pipeline has moved past the point
+    // where auto_populate_surface_map runs.
+    if (imageState === "PENDING" || imageState === "PROCESSING" || !imageState) return
+    // If we already have local data, do nothing — a stale re-fetch would
+    // clobber the user's manual edits (persist runs on every change and
+    // eventually reconciles anyway).
+    if (components.length || boundaries.length || environments.length) return
+
+    let cancelled = false
+    ;(async () => {
+      try {
+        const res = await api.get(`/threat_modeling/${assessmentId}/surface-map/${imageId}`)
+        const sm = res?.data?.surface_map
+        if (cancelled || !sm) return
+        const comps = Array.isArray(sm.components) ? sm.components.map(migrateTMComponent) : []
+        const bounds = Array.isArray(sm.trust_boundaries) ? sm.trust_boundaries.map(migrateTMBoundary) : []
+        const envs = Array.isArray(sm.environments) ? sm.environments.map(migrateTMEnvironment) : []
+        if (comps.length || bounds.length || envs.length) {
+          setComponents(comps)
+          setBoundaries(bounds)
+          setEnvironments(envs)
+          // The very next persist would round-trip the value we just read
+          // back to the server — no-op, but wastes a PUT and creates a
+          // noisy save-flash. Skip it.
+          skipNextPersistRef.current = true
+        }
+      } catch { /* leave inventory empty — user can retry manually */ }
+    })()
+    return () => { cancelled = true }
+    // Include the array lengths so the effect re-evaluates the "already
+    // have data" guard when things actually land — otherwise we'd only
+    // check that condition at effect-mount and could loop against a stale
+    // read.
+  }, [imageState, initialized, apiEnabled, assessmentId, imageId, components.length, boundaries.length, environments.length])
 
   // Persist: localStorage immediately, API debounced.
   useEffect(() => {
@@ -1620,6 +1680,72 @@ const ThreatModelInventory = ({ code, persistKey, assessmentId, imageId }: { cod
     if (type === "Edge") return <ShieldAlert className="size-3.5 text-amber-500 dark:text-amber-400" />
     if (type === "Infrastructure") return <Layers className="size-3.5 text-sky-500 dark:text-sky-400" />
     return <Server className="size-3.5 text-muted-foreground" />
+  }
+
+  // While Phase A is still running, the surface_map row doesn't exist yet.
+  // Show a "generating…" placeholder instead of an empty inventory so the
+  // user knows to wait rather than assume something failed.
+  const isGeneratingInventory =
+    initialized &&
+    components.length === 0 &&
+    boundaries.length === 0 &&
+    environments.length === 0 &&
+    (imageState === "PROCESSING" || imageState === "PENDING")
+
+  if (isGeneratingInventory) {
+    const stageMeta = STAGES.find((s) => s.id === imageStage)
+    const stageLabel = stageMeta?.label ?? imageStage ?? "Analysing diagram"
+    const StageIcon = stageMeta?.icon ?? Loader2
+    return (
+      <TooltipProvider delayDuration={150}>
+        <Card className="overflow-hidden py-0 gap-0">
+          <CardHeader className="border-b bg-muted/30 px-5 py-4">
+            <div className="flex items-center gap-3">
+              <div className="size-9 grid place-items-center rounded-lg border bg-background text-primary">
+                <ShieldCheck className="size-4" />
+              </div>
+              <div className="min-w-0">
+                <CardTitle className="flex items-center gap-2 text-sm">
+                  ThreatModeller Inventory
+                  <Badge variant="secondary" className="gap-1 text-[10px] font-medium">
+                    <Loader2 className="size-3 animate-spin" />
+                    Generating
+                  </Badge>
+                </CardTitle>
+                <p className="mt-0.5 text-xs text-muted-foreground">
+                  Waiting for Phase A to finish extracting components.
+                </p>
+              </div>
+            </div>
+          </CardHeader>
+          <CardContent className="px-5 py-10">
+            <div className="flex flex-col items-center gap-4 text-center">
+              <div className="relative">
+                <div className="size-14 grid place-items-center rounded-full border-2 border-primary/30 bg-primary/5">
+                  <StageIcon className={cn("size-6 text-primary", StageIcon === Loader2 && "animate-spin")} />
+                </div>
+                <motion.div
+                  className="absolute inset-0 rounded-full border-2 border-primary/40"
+                  animate={{ scale: [1, 1.35, 1], opacity: [0.6, 0, 0.6] }}
+                  transition={{ duration: 1.8, repeat: Infinity, ease: "easeInOut" }}
+                />
+              </div>
+              <div className="space-y-1">
+                <p className="text-sm font-medium text-foreground">{stageLabel}</p>
+                <p className="text-xs text-muted-foreground">
+                  Components, environments, and trust boundaries will appear here once the
+                  backend finishes analysing the diagram.
+                </p>
+              </div>
+              <div className="mt-2 flex items-center gap-2 text-[11px] text-muted-foreground">
+                <Loader2 className="size-3 animate-spin" />
+                <span>This usually takes 15–60 seconds per image.</span>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      </TooltipProvider>
+    )
   }
 
   return (
@@ -2433,7 +2559,21 @@ const ThreatModelInventory = ({ code, persistKey, assessmentId, imageId }: { cod
 }
 
 // --- Mermaid Diagram Editor ---
-const DiagramEditor = ({ code, onCodeChange, persistKey, assessmentId }: { code: string; onCodeChange: (v: string) => void; persistKey?: string; assessmentId?: string }) => {
+const DiagramEditor = ({
+  code,
+  onCodeChange,
+  persistKey,
+  assessmentId,
+  imageState,
+  imageStage,
+}: {
+  code: string;
+  onCodeChange: (v: string) => void;
+  persistKey?: string;
+  assessmentId?: string;
+  imageState?: string;
+  imageStage?: string;
+}) => {
   const { resolvedTheme } = useTheme()
   const mermaidTheme: "light" | "dark" = resolvedTheme === "dark" ? "dark" : "light"
   const [svg, setSvg] = useState("")
@@ -2585,7 +2725,14 @@ const DiagramEditor = ({ code, onCodeChange, persistKey, assessmentId }: { code:
         </AnimatePresence>
       </div>
 
-      <ThreatModelInventory code={code} persistKey={persistKey} assessmentId={assessmentId} imageId={persistKey} />
+      <ThreatModelInventory
+        code={code}
+        persistKey={persistKey}
+        assessmentId={assessmentId}
+        imageId={persistKey}
+        imageState={imageState}
+        imageStage={imageStage}
+      />
 
       {/* Expanded diagram overlay */}
       <AnimatePresence>
@@ -2955,7 +3102,7 @@ export default function AssessmentPage() {
   const isFailed = assessmentState === "FAILED"
   const activeMermaid = activeImage ? mermaidDiagrams[activeImage.image_id] || "" : ""
 
-  // --- ATM Studio-style canvas: edit `activeMermaid`, click "Render Diagram"
+  // --- Blanc Studio-style canvas: edit `activeMermaid`, click "Render Diagram"
   //     to push it onto `renderedMermaid` (what `MermaidChart` actually draws).
   const [renderedMermaid, setRenderedMermaid] = useState<string>("")
 
@@ -3256,6 +3403,27 @@ export default function AssessmentPage() {
                       </TooltipTrigger>
                       <TooltipContent>Run summary &amp; clarification on the extracted components</TooltipContent>
                     </Tooltip>
+                  ) : (assessmentState === "PROCESSING" || assessmentState === "PENDING") ? (
+                    // Phase A/B in flight — surface the live stage on the button
+                    // so the user sees WHICH step is running, not just "please wait".
+                    (() => {
+                      const stageMeta = STAGES.find((s) => s.id === assessmentStage)
+                      const stageLabel = stageMeta?.label ?? assessmentStage ?? "Processing"
+                      const stateLabel = STATE_INFO[assessmentState]?.label ?? assessmentState
+                      return (
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <Button size="sm" disabled className="h-8 shadow-sm gap-2">
+                              <Loader2 className="size-3.5 animate-spin" />
+                              {stateLabel} · {stageLabel}
+                            </Button>
+                          </TooltipTrigger>
+                          <TooltipContent>
+                            {stageMeta?.tooltip ?? "Backend pipeline is running — the Next button will unlock automatically."}
+                          </TooltipContent>
+                        </Tooltip>
+                      )
+                    })()
                   ) : (
                     <Tooltip>
                       <TooltipTrigger asChild>
@@ -3575,6 +3743,8 @@ export default function AssessmentPage() {
                     persistKey={activeImage.image_id}
                     assessmentId={typeof id === "string" ? id : Array.isArray(id) ? id[0] : undefined}
                     imageId={activeImage.image_id}
+                    imageState={activeImage.state}
+                    imageStage={activeImage.stage}
                   />
                 ) : (
                   <div className="flex h-full min-h-[420px] items-center justify-center text-sm text-muted-foreground">

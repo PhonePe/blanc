@@ -24,7 +24,7 @@ export default function ComplianceRagPage() {
         <KBUploadCard kb={kb} />
       </div>
 
-      <FooterPill label="ATM RAG · Compliance" tone="emerald" />
+      <FooterPill label="Blanc RAG · Compliance" tone="emerald" />
     </PageShell>
   );
 }

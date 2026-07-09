@@ -1314,7 +1314,7 @@ export default function QuestionsAdminPage() {
         </Tabs>
       </div>
 
-      <FooterPill label="ATM Questions · v1" tone="indigo" />
+      <FooterPill label="Blanc Questions · v1" tone="indigo" />
     </div>
   )
 }

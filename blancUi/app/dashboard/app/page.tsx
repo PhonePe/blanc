@@ -1,6 +1,7 @@
 "use client"
 
 import React, { useEffect, useMemo, useState } from "react"
+import { useRouter } from "next/navigation"
 import { motion, AnimatePresence } from "framer-motion"
 
 // shadcn/ui
@@ -103,6 +104,8 @@ function toggleOptionValue(
 }
 
 export default function AppOnboardingModern() {
+  const router = useRouter()
+
   // State
   const [isSetupMode, setIsSetupMode] = useState(true)
   const [orgList, setOrgList] = useState<OrgData[]>([])
@@ -211,12 +214,19 @@ export default function AppOnboardingModern() {
     fetchCategoryNames()
   }, [categories, categoryNames])
 
-  const fetchQuestions = async () => {
+  // Returns the fetched list so `handleCreateApp` can branch on
+  // "no APP-level questions authored yet". Does NOT redirect —
+  // otherwise the initial page-load fetch would bounce the user
+  // before they've even seen the create-app form.
+  const fetchQuestions = async (): Promise<Question[]> => {
     try {
       const json = await api.get(`/questions?entity_type=APP`)
-      if (json?.data) setQuestions(json.data)
+      const list: Question[] = Array.isArray(json?.data) ? json.data : []
+      setQuestions(list)
+      return list
     } catch (e: any) {
       toast.error(e?.message || "Failed to load questions")
+      return []
     }
   }
 
@@ -264,8 +274,27 @@ export default function AppOnboardingModern() {
         name: newAppName.trim(),
         org_id: selectedOrgId,
       })
-      if (json?.data)
-        await loadAppProgress(json.data.id, json.data.name, selectedOrgId)
+      if (!json?.data) return
+
+      const createdName = json.data.name ?? newAppName.trim()
+
+      // If an admin hasn't authored any APP-level onboarding questions
+      // yet, there's nothing to fill in for this app. Confirm the
+      // create, hold the toast for 2s so it's actually readable, then
+      // bounce to the admin console (APP tab).
+      const list = await fetchQuestions()
+      if (list.length === 0) {
+        toast.success(
+          `App "${createdName}" created. Redirecting to questions setup…`,
+          { duration: 2000 },
+        )
+        setTimeout(() => {
+          router.push("/dashboard/admin/questions?entity_type=APP")
+        }, 2000)
+        return
+      }
+
+      await loadAppProgress(json.data.id, json.data.name, selectedOrgId)
     } catch (e: any) {
       toast.error(e?.message || "Could not create app.")
       setError("Could not create app.")

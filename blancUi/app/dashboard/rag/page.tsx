@@ -574,7 +574,7 @@ export default function CreateRagPage() {
         </div>
       </div>
 
-      <FooterPill label="ATM RAG · v1" tone="indigo" />
+      <FooterPill label="Blanc RAG · v1" tone="indigo" />
     </div>
   )
 }

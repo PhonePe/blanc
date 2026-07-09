@@ -6,7 +6,7 @@ api_results.json
 # Rendered configs — never commit these. Only the `.example` /
 # `.template` versions belong in git.
 local.yml
-atm/config/docker.yml
+blanc/config/docker.yml
 test*.py
 test.png
 final.py
@@ -21,7 +21,7 @@ __pycache__/
 *.pyo
 
 # PaddleOCR CLI output. Weights live in-tree at
-# atm/core/ocr/ocr_models/ and are intentionally NOT ignored — leading
+# blanc/core/ocr/ocr_models/ and are intentionally NOT ignored — leading
 # slash anchors this rule so only a stray top-level ocr_models/ (from an
 # older layout) is skipped.
 /ocr_models/

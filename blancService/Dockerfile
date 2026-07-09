@@ -38,9 +38,9 @@ RUN python3 -m pip install --no-cache-dir "sentence-transformers>=2.7.0"
 # is the place to look.
 RUN python3 -c "import cv2, paddle; from paddleocr import PaddleOCR; print('OCR stack OK')"
 
-# App code + PP-OCRv6 weights (shipped in-tree under atm/core/ocr/ocr_models/)
+# App code + PP-OCRv6 weights (shipped in-tree under blanc/core/ocr/ocr_models/)
 COPY main.py .
-COPY atm/ ./atm/
+COPY blanc/ ./blanc/
 COPY entrypoint.sh /usr/local/bin/entrypoint.sh
 
 RUN chmod +x /usr/local/bin/entrypoint.sh && \
@@ -48,9 +48,9 @@ RUN chmod +x /usr/local/bin/entrypoint.sh && \
 
 # Run as a non-root user — paddle likes to write to $HOME/.paddleocr, so
 # ensure the home dir exists and is writable.
-RUN useradd -r -u 10001 -m -d /home/atm atm && \
-    chown -R atm:atm /app /home/atm
-USER atm
+RUN useradd -r -u 10001 -m -d /home/blanc blanc && \
+    chown -R blanc:blanc /app /home/blanc
+USER blanc
 
 EXPOSE 8000
 

@@ -1,6 +1,6 @@
 import type { NextConfig } from "next";
 
-// Keep this in sync with atm/lib/api-client.ts — the CSP needs to
+// Keep this in sync with blancUi/lib/api-client.ts — the CSP needs to
 // allow-list whatever host the fetch actually targets, and the default
 // there is 127.0.0.1:8000 when the env var is unset.
 const DEV_API_HOSTS = ["http://127.0.0.1:8000", "http://localhost:8000"];
