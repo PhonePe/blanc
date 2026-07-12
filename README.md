@@ -40,15 +40,7 @@ Blanc. aims to shift threat modeling from a manual workshop-driven activity into
 - Add custom rags and connectors based on what your organization uses
 - Works with free models with open-ai support
 
-<div align="center">
-  <table>
-    <tr>
-      <td>
-        <img src="assets/blanc-website.gif" alt="Blanc in action" width="900" />
-      </td>
-    </tr>
-  </table>
-</div>
+![Blanc](assets/blanc-website.gif)
 
 ## Why Blanc.?
 
