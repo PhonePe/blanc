@@ -34,6 +34,48 @@ from blanc.skills import get_skill
 config = get_settings()
 
 
+def _format_onboarding_qna(
+    qna: List[Dict[str, str]],
+    *,
+    max_chars: int = 4000,
+) -> str:
+    """Render an org / app onboarding Q&A list for the auto-answer prompt.
+
+    Compact ``[category] Q → A`` bullets, one per line. Truncates at
+    ``max_chars`` (falling back to a whole-entry boundary rather than
+    mid-answer) so a very large onboarding set doesn't blow the LLM
+    context budget for a single clarification question.
+
+    Empty input returns the same sentinel the caller uses for "no data
+    available" so the two branches converge in the prompt.
+    """
+    if not qna:
+        return "(no onboarding answers recorded)"
+
+    lines: List[str] = []
+    used = 0
+    for entry in qna:
+        q = (entry.get("question") or "").strip()
+        a = (entry.get("answer") or "").strip()
+        if not q or not a:
+            continue
+        cat = (entry.get("category") or "").strip()
+        prefix = f"[{cat}] " if cat else ""
+        line = f"- {prefix}{q} → {a}"
+        # +1 for the newline joiner.
+        if used + len(line) + 1 > max_chars and lines:
+            lines.append(
+                f"- … ({len(qna) - len(lines)} more onboarding answers truncated)"
+            )
+            break
+        lines.append(line)
+        used += len(line) + 1
+
+    if not lines:
+        return "(no onboarding answers recorded)"
+    return "\n".join(lines)
+
+
 class AssessmentService:
     @staticmethod
     async def create_new_assessment(
@@ -523,6 +565,72 @@ class AssessmentService:
                 f"auto-answer failed: {sm_err}"
             )
 
+        # Org + App onboarding Q&A. Fetched once per call and reused
+        # across every question. Best-effort: any lookup failure logs
+        # a warning and falls back to the sentinel so the skill still
+        # runs (just without that grounding).
+        #
+        # NOTE: Assessment.org_name / .app_name are strings today, not
+        # FKs, so we resolve them by case-insensitive name match. When
+        # multiple orgs share a name the CRUD helper logs a warning.
+        # Long-term fix is to add org_id/app_id FK columns to Assessment
+        # and resolve at create time.
+        from blanc.crud import application_crud, org_crud
+        org_context_str = "(no organisation onboarding answers available)"
+        app_context_str = "(no application onboarding answers available)"
+        try:
+            org = (
+                org_crud.get_org_by_name(db, analysis.assessment.org_name)
+                if analysis.assessment and analysis.assessment.org_name
+                else None
+            )
+            if org:
+                org_qna = org_crud.get_org_qna(db, org.id)
+                if org_qna:
+                    org_context_str = _format_onboarding_qna(
+                        org_qna, max_chars=4000,
+                    )
+            else:
+                if analysis.assessment and analysis.assessment.org_name:
+                    logging.info(
+                        f"[{assessment_id}][img:{image_id}] no Org row matches "
+                        f"assessment.org_name={analysis.assessment.org_name!r} — "
+                        f"skipping org onboarding context."
+                    )
+        except Exception as org_err:
+            logging.warning(
+                f"[{assessment_id}][img:{image_id}] org onboarding fetch "
+                f"failed: {org_err}"
+            )
+
+        try:
+            app = None
+            if analysis.assessment and analysis.assessment.app_name:
+                # Scope by org_id when we successfully resolved the org,
+                # otherwise fall back to a global name lookup.
+                scoped_org_id = org.id if org else None
+                app = application_crud.get_app_by_name(
+                    db, analysis.assessment.app_name, org_id=scoped_org_id,
+                )
+            if app:
+                app_qna = application_crud.get_app_qna(db, app.id)
+                if app_qna:
+                    app_context_str = _format_onboarding_qna(
+                        app_qna, max_chars=4000,
+                    )
+            else:
+                if analysis.assessment and analysis.assessment.app_name:
+                    logging.info(
+                        f"[{assessment_id}][img:{image_id}] no App row matches "
+                        f"assessment.app_name={analysis.assessment.app_name!r} — "
+                        f"skipping app onboarding context."
+                    )
+        except Exception as app_err:
+            logging.warning(
+                f"[{assessment_id}][img:{image_id}] app onboarding fetch "
+                f"failed: {app_err}"
+            )
+
         vector_client = get_rag_client(config)
         namespace = config.rag_config.namespace
         collection_id = config.rag_config.collection_id
@@ -555,6 +663,8 @@ class AssessmentService:
                     rag_context = "(no supporting documentation available)"
 
                 prompt = get_skill("auto_answer_clarification").render(
+                    org_context=org_context_str,
+                    app_context=app_context_str,
                     rag_context=rag_context,
                     arch_text=mermaid_text or "(no architecture diagram available)",
                     surface_map=surface_map_str,

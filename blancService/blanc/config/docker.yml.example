@@ -147,3 +147,76 @@ rmqConfig:
   queues:
     - name: BLANC
       concurrency: 2
+
+
+# ═════════════════════════════════════════════════════════════════════
+# External integrations (OPTIONAL) — pluggable connectors that hydrate
+# the surface_map from org-owned systems BEFORE threat modelling runs.
+# The same block also drives clarification auto-answer when
+# ``question.answer`` is set under ``field_sources``.
+#
+# The framework treats a missing or empty ``integrations`` block as a
+# no-op — nothing external is called. Uncomment and adapt to wire your
+# own integration.
+#
+# See ``blanc/modules/Example.py`` for a working reference connector.
+# ═════════════════════════════════════════════════════════════════════
+
+# integrations:
+#
+#   # Named credentials referenced by each connector's ``auth`` field.
+#   #   ${env:VAR}    — read from os.environ at request time. In Docker
+#   #                   pass secrets via docker-compose ``environment:``
+#   #                   or an ``env_file:``.
+#   #   ${token:X}    — resolved via register_token_source("X", fn)
+#   #                   during app startup.
+#   auth:
+#     example_bearer:
+#       header: "Authorization"
+#       value:  "Bearer ${env:EXAMPLE_API_TOKEN}"
+#
+#   # Connector instances. Key = the class' ``name`` attribute.
+#   # Only transport concerns live here — vendor-specific request-body
+#   # knobs (prompts, model names, retriever names) belong in the
+#   # connector class.
+#   connectors:
+#     Example:
+#       module: blanc.modules.Example
+#       auth:   example_bearer
+#       url:    "https://your-agent-endpoint.example.com/ask"
+#
+#       # Optional per-deployment override of the vendor model alias.
+#       # model: "your-model-alias"
+#
+#       # TLS verification. Accepts:
+#       #   true               (default; verify against certifi bundle)
+#       #   false              (curl -k equivalent)
+#       #   "/path/to/ca.pem"  (verify against a specific PEM bundle,
+#       #                       e.g. your org's private CA. Mount the
+#       #                       PEM into the api container via a bind).
+#       verify_ssl: true
+#
+#       timeout_s: 60
+#       cache_ttl_s: 3600
+#       max_concurrent_requests: 4
+#       max_retries: 3
+#       keepalive_expiry_s: 5
+#       circuit_breaker_failures: 5
+#       circuit_breaker_cooldown_s: 60
+#
+#       # SSRF guard — hard allow-list of hosts this connector may hit.
+#       allowed_hosts:
+#         - "your-agent-endpoint.example.com"
+#
+#   # Which connector(s) fill which target, in fallback order. First
+#   # non-null result wins. Empty / omitted list = target left alone.
+#   #
+#   # Reserved key prefixes:
+#   #   component.<field> — hydrated per component during Phase A
+#   #   boundary.<field>  — hydrated per trust boundary during Phase A
+#   #   question.answer   — external auto-answer for clarification
+#   #                       questions; falls back to built-in RAG+LLM
+#   field_sources:
+#     "component.desc":        [Example]
+#     # "component.exposure":    [Example]
+#     # "component.environment": [Example]

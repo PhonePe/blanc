@@ -73,8 +73,12 @@ def upsert_surface_map(
     succeeds because the racing writer has committed by then.
 
     ``by_alias=False`` keeps snake_case keys (trust_level, threat_level).
+    ``mode="json"`` converts non-primitive types (datetime → ISO 8601
+    string, UUID → str, enum → value) so the SQLAlchemy ``JSON`` column
+    serializer never chokes on a ``datetime`` from ``FieldSource.fetched_at``.
+    Pydantic round-trips the ISO strings back to ``datetime`` on read.
     """
-    blob = payload.model_dump(by_alias=False, exclude_none=False)
+    blob = payload.model_dump(mode="json", by_alias=False, exclude_none=False)
 
     last_error: Optional[BaseException] = None
     for attempt in range(1, _MAX_UPSERT_ATTEMPTS + 1):

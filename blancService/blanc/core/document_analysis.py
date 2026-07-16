@@ -25,6 +25,22 @@ from blanc.core.state_machine import transition_image
 from blanc.schemas.surface_map import SurfaceMapPayload
 
 
+# ── Integrations dispatcher (lazy singleton) ────────────────────
+# Built on first use. Lives at module scope so RMQ consumers reuse
+# the same HTTP clients (and TTL cache / circuit breaker state)
+# across every image and assessment.
+_dispatcher = None
+
+
+def _integrations_dispatcher():
+    global _dispatcher
+    if _dispatcher is None:
+        from blanc.config_parsers.settings import get_settings
+        from blanc.core.integrations.factory import build_dispatcher
+        _dispatcher = build_dispatcher(get_settings())
+    return _dispatcher
+
+
 # Max edge sent to the vision endpoint. Larger images get downscaled to a
 # temp file before upload — the OpenAI vision endpoint rejects very large
 # inline base64 payloads with opaque stream resets.
@@ -398,14 +414,29 @@ def auto_populate_surface_map(
     mermaid_context: str,
     diagram_type: Optional[str] = None,
 ) -> None:
-    """Run Surface Discovery once and seed the ``surface_map`` row.
+    """Seed the ``surface_map`` row (if missing) and then run external
+    integrations to hydrate it.
 
-    Called from Phase A (both image and mermaid-input variants) immediately
-    after the Mermaid source is committed, so the ThreatModeller Inventory
-    in the UI is pre-populated
-    the very first time the user opens the assessment. Failures are logged
-    and swallowed — surface discovery is an enhancement, never block the
-    main analysis pipeline.
+    Runs in two independent phases:
+
+      1. **Seed** — if no ``surface_map`` row exists for this
+         (assessment, image) yet, call ``surface_discovery`` to
+         populate the initial component / boundary / environment
+         inventory from the mermaid diagram. Skipped when the row is
+         already there — we never overwrite the LLM-extracted or
+         user-edited inventory.
+
+      2. **Hydrate** — regardless of whether we just seeded or the
+         row already existed, run the configured integrations
+         dispatcher to enrich per-field values via configured connectors
+         like ``desc`` / ``exposure`` / ``environment``.  The
+         dispatcher's ``update_surface_field`` helper respects the
+         user-lock (``sources[<field>].provider == "user"`` is
+         immutable), so this is idempotent and safe on every replay.
+
+    Failures in either phase are logged and swallowed — surface map
+    enrichment is an enhancement, never a blocker for the main
+    analysis pipeline.
     """
     if not (mermaid_context or "").strip():
         logging.info(
@@ -413,46 +444,83 @@ def auto_populate_surface_map(
         )
         return
 
-    # Skip when a row already exists (e.g. re-runs of the pipeline) so we
-    # don't overwrite user edits.
     from blanc.crud import surface_map_crud  # local import: avoid cycles
 
-    if surface_map_crud.get_surface_map(db, assessment_id, image_id):
+    # ── Phase 1: seed the row if missing ──────────────────────────
+    existing = surface_map_crud.get_surface_map(db, assessment_id, image_id)
+    if existing:
         logging.info(
-            f"[{assessment_id}][img:{image_id}] surface_map already exists, leaving it alone."
+            f"[{assessment_id}][img:{image_id}] surface_map already exists, "
+            f"skipping surface_discovery — proceeding to integrations hydration."
         )
-        return
+    else:
+        resolved_diagram_type = _sniff_diagram_type(
+            mermaid_context, fallback=diagram_type or "flowchart TD",
+        )
 
-    resolved_diagram_type = _sniff_diagram_type(mermaid_context, fallback=diagram_type or "flowchart TD")
+        try:
+            generated = surface_discovery(
+                image_path=None,
+                diagram_type=resolved_diagram_type,
+                mermaid_context=mermaid_context,
+                assessment_id=assessment_id,
+            )
+        except Exception:
+            logging.exception(
+                f"[{assessment_id}][img:{image_id}] surface_discovery failed "
+                f"during auto-populate; continuing without seed."
+            )
+            # Fall through to hydration only if we can't seed — a
+            # partial hydration on an empty row is a no-op anyway.
+            return
 
+        if mermaid_context and not generated.get("mermaid"):
+            generated["mermaid"] = mermaid_context
+
+        try:
+            payload = SurfaceMapPayload.model_validate(generated)
+            surface_map_crud.upsert_surface_map(db, assessment_id, image_id, payload)
+            logging.info(
+                f"[{assessment_id}][img:{image_id}] surface_map auto-populated "
+                f"({len(payload.components)} components, "
+                f"{len(payload.environments)} environments, "
+                f"{len(payload.trust_boundaries)} trust boundaries)."
+            )
+        except Exception:
+            logging.exception(
+                f"[{assessment_id}][img:{image_id}] Failed to persist "
+                f"auto-populated surface_map; continuing."
+            )
+            return
+
+    # ── Phase 2: integrations hydration (runs every call) ─────────
+    # User-lock in db_helpers.update_surface_field prevents connectors
+    # from overwriting fields whose sources[<field>].provider == "user".
+    # HttpRunner's TTL cache (cache_ttl_s in config.yml) prevents
+    # repeated Phase-A runs from hammering the upstream.
     try:
-        generated = surface_discovery(
-            image_path=None,
-            diagram_type=resolved_diagram_type,
-            mermaid_context=mermaid_context,
+        import asyncio
+
+        dispatcher = _integrations_dispatcher()
+        row = surface_map_crud.get_surface_map(db, assessment_id, image_id)
+        if not row or not row.surface_map:
+            logging.info(
+                f"[{assessment_id}][img:{image_id}] no surface_map row to hydrate; skipping."
+            )
+            return
+
+        asyncio.run(dispatcher.hydrate(
+            SurfaceMapPayload(**row.surface_map),
             assessment_id=assessment_id,
-        )
-    except Exception:
-        logging.exception(
-            f"[{assessment_id}][img:{image_id}] surface_discovery failed during auto-populate; continuing."
-        )
-        return
-
-    if mermaid_context and not generated.get("mermaid"):
-        generated["mermaid"] = mermaid_context
-
-    try:
-        payload = SurfaceMapPayload.model_validate(generated)
-        surface_map_crud.upsert_surface_map(db, assessment_id, image_id, payload)
+            image_id=image_id,
+        ))
         logging.info(
-            f"[{assessment_id}][img:{image_id}] surface_map auto-populated "
-            f"({len(payload.components)} components, "
-            f"{len(payload.environments)} environments, "
-            f"{len(payload.trust_boundaries)} trust boundaries)."
+            f"[{assessment_id}][img:{image_id}] integrations hydration complete."
         )
     except Exception:
         logging.exception(
-            f"[{assessment_id}][img:{image_id}] Failed to persist auto-populated surface_map; continuing."
+            f"[{assessment_id}][img:{image_id}] integrations hydration failed "
+            f"during Phase A; continuing."
         )
 
 

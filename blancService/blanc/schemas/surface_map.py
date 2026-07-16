@@ -9,9 +9,32 @@ domain concept ("surface map") and the DB table (``surface_map``).
 """
 from __future__ import annotations
 
-from typing import List, Literal, Optional
+from datetime import datetime
+from typing import Dict, List, Literal, Optional
 
 from pydantic import BaseModel, ConfigDict, Field
+
+
+# ── Provenance ────────────────────────────────────────────────────
+
+class FieldSource(BaseModel):
+    """Per-field provenance stamp.
+
+    Written onto ``SurfaceComponent.sources[<field>]`` /
+    ``SurfaceBoundary.sources[<field>]`` every time an external
+    connector (or the analyst via the UI) sets a value. The dispatcher
+    uses ``provider`` to enforce the user-lock rule — if
+    ``provider == "user"``, no connector may overwrite the field.
+
+    Providers:
+      - ``"user"``     — human edit in the UI (protected, highest priority)
+      - ``"diagram"``  — value inferred from the ingested diagram
+      - ``"<Name>"``   — the ``name`` attribute of an external connector
+        (e.g. ``"Example"``)
+    """
+    provider: str
+    fetched_at: datetime
+    source_ref: Optional[str] = None
 
 
 # ── Enum literals (kept as ``Literal[...]`` rather than proper enums so
@@ -47,6 +70,10 @@ class SurfaceComponent(BaseModel):
     authn: AuthN = "None"
     authz: AuthZ = "None"
     desc: str = ""
+    # Per-field provenance — written by integrations dispatcher and the
+    # UI. Additive: rows saved before this field existed round-trip fine
+    # (default_factory=dict).
+    sources: Dict[str, FieldSource] = Field(default_factory=dict)
 
     model_config = ConfigDict(populate_by_name=True)
 
@@ -59,6 +86,7 @@ class SurfaceBoundary(BaseModel):
     protocol: Protocol = "HTTPS"
     authentication: str = "TLS 1.3"
     threat_level: TrustLevel = Field(default="Medium", alias="threatLevel")
+    sources: Dict[str, FieldSource] = Field(default_factory=dict)
 
     model_config = ConfigDict(populate_by_name=True)
 

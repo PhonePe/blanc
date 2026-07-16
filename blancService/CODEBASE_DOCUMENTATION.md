@@ -4,6 +4,8 @@
 
 > The package used to be called `atm` (Automated Threat Modeling) — the code, config, and infra names have all been renamed to `blanc`. If you see a lingering `atm` reference in comments or third-party artifacts, treat it as legacy.
 
+**Repository:** <https://github.com/PhonePe/blanc>
+
 ---
 
 ## Table of Contents
@@ -31,6 +33,7 @@
 21. [End-to-End Flow](#21-end-to-end-flow)
 22. [Deployment](#22-deployment)
 23. [Dependencies](#23-dependencies)
+24. [External Integrations Framework](#24-external-integrations-framework)
 
 ---
 
@@ -192,6 +195,16 @@ blancService/
     │   ├── threat_modeling.py       # Multi-framework threat generation
     │   ├── auth/
     │   │   └── auth.py              # JWT + OAuth2 + role deps
+    │   ├── integrations/            # Pluggable external-connector framework (see §24)
+    │   │   ├── base.py              # SurfaceMapConnector ABC + ConnectorResult
+    │   │   ├── registry.py          # @connector decorator + name registry
+    │   │   ├── auth.py              # Header-template + token-source auth
+    │   │   ├── http_runner.py       # httpx wrapper: retries, breaker, cache,
+    │   │   │                        # semaphore, TLS verify, host allow-list
+    │   │   ├── dispatcher.py        # Runtime hydrate() loop (Phase A end)
+    │   │   ├── factory.py           # Build Dispatcher from AppConfig
+    │   │   └── db_helpers.py        # update_surface_field with user-lock
+    │   │                            # + provenance stamping
     │   ├── llm_client/              # Provider-abstracted LLM client
     │   │   ├── base.py              # LLMProvider / LLMMessage / LLMResponse ABCs
     │   │   ├── client.py            # LLMClient + set_assessment_context (binds
@@ -221,6 +234,8 @@ blancService/
     ├── crud/
     │   ├── assessment_crud.py       # Assessment, DocumentAnalysis, results
     │   ├── application_crud.py      # Apps, questions, onboarding progress
+    │   │                            # (+ get_app_by_name, get_app_qna)
+    │   ├── org_crud.py              # Org lookup + onboarding Q&A fetchers
     │   └── surface_map_crud.py      # Atomic upsert via INSERT ... ON DUPLICATE
     │                                # KEY UPDATE with retry on HA_ERR_RECORD_CHANGED
     │
@@ -260,7 +275,8 @@ blancService/
     │
     ├── services/                    # Class-based business logic
     │   ├── application_service.py
-    │   ├── assessment_service.py
+    │   ├── assessment_service.py    # auto_answer_image also grounds on
+    │   │                            # org + app onboarding Q&A (see §9)
     │   ├── auth_service.py
     │   └── onboarding_service.py
     │
@@ -277,6 +293,11 @@ blancService/
     │       ├── stride_threat_modeling.md
     │       ├── surface_discovery.md
     │       └── threat_analysis.md
+    │
+    ├── modules/                     # External integrations (see §24)
+    │   ├── __init__.py
+    │   └── Example.py               # Reference SurfaceMapConnector — copy
+    │                                # + rename to add your own
     │
     └── util/                        # Cross-cutting helpers (stateless, no I/O)
         ├── __init__.py              # Re-exports new_id, now_utc, get_or_404
@@ -427,6 +448,9 @@ All are Pydantic v2 `BaseModel` subclasses. The root is `AppConfig`:
 | `QueueDetails` / `RMQConf` | RabbitMQ hosts, credentials, queue definitions |
 | `StorageConfig` | Backend selector + local/S3 sub-configs |
 | `S3Config` | Bucket, region, credentials |
+| `IntegrationsConfig` | Pluggable connector registry — `auth` credentials, `connectors` instances, `field_sources` routing chains (see §24) |
+| `AuthProfileConfig` | Named header credential (`header`, `value` with `${env:VAR}` / `${token:X}` templating) |
+| `ConnectorConfig` | Per-connector transport config: `module`, `auth`, `url`, `timeout_s`, `cache_ttl_s`, `max_concurrent_requests`, `max_retries`, `keepalive_expiry_s`, `circuit_breaker_*`, `allowed_hosts`, `verify_ssl`, `extra` |
 
 ### 5.3 Logging — `config_parsers/log_utils.py` + `util/logging_context.py`
 
@@ -778,7 +802,7 @@ Central orchestrator. Key methods (non-exhaustive):
 - `create_new_assessment(...)` — persist assessment + document rows, save uploads via `StorageBackend`, publish `IMAGE_ANALYSIS_PHASE_A` (or `..._FROM_MERMAID`) + `PDF_INGESTION` messages.
 - `get_list(...)` / `delete_assessment(...)` / `get_progress(...)` / `get_status(...)`.
 - `process_answers(...)` / `save_answers_draft(...)` — clarification workflow.
-- `auto_answer_image(...)` — concurrent RAG-based answers per question.
+- `auto_answer_image(...)` — concurrent RAG-based answers per question. **Also grounds on org + app onboarding Q&A**: resolves the `Org` and `App` by name (case-insensitive) via `org_crud` / `application_crud`, fetches every recorded response, formats them as compact `[category] Q → A` bullets (capped at 4 000 chars each via `_format_onboarding_qna`), and passes them to the `auto_answer_clarification` skill as `${org_context}` + `${app_context}`.
 - `continue_phase_b(...)` / `continue_image_phase_b(...)` — AWAITING_REVIEW → Phase B gate.
 - `run_threat_modeling(...)` — publish `THREAT_MODELING` message.
 - `get_threats_grouped_by_image(...)` / `reanalyze_threat_modeling(...)`.
@@ -812,7 +836,7 @@ Phase B:  AWAITING_REVIEW → PROCESSING (summary + clarification) → RAG auto-
                                         (NEEDS_INPUT | COMPLETED)
 ```
 
-- **`IMAGE_ANALYSIS_PHASE_A`** — reads bytes, calls `image_to_mermaid` + `component_breakdown` skills.
+- **`IMAGE_ANALYSIS_PHASE_A`** — reads bytes, calls `image_to_mermaid` + `component_breakdown` skills. When integrations are configured, `auto_populate_surface_map` also runs `Dispatcher.hydrate(...)` at the end of the phase to fill `SurfaceComponent.desc` / `.exposure` / `.environment` (and any other declared targets) from external systems. See §24.
 - **`IMAGE_ANALYSIS_PHASE_A_FROM_MERMAID`** — Studio flow: caller already supplied Mermaid text, so `image → mermaid` is skipped and only components are extracted from the diagram.
 - **`IMAGE_ANALYSIS_PHASE_B`** — `high_level_summary` + `clarification_questions` skills run in parallel via `ThreadPoolExecutor`. Then per-question RAG search calls `auto_answer_clarification` concurrently.
 - Terminal state per image is `NEEDS_INPUT` if any question is left unanswered, otherwise `COMPLETED`.
@@ -1088,7 +1112,7 @@ Template variables use `string.Template` (`$var` / `${var}`) so literal `{`/`}` 
 | `high_level_summary` | 4–5 line architectural summary |
 | `component_breakdown` | Components + trust level + data assets |
 | `clarification_questions` | ≤ 20 security-assessment questions |
-| `auto_answer_clarification` | Answer questions using RAG context |
+| `auto_answer_clarification` | Answer clarification questions. Grounded in five sources (priority order): org onboarding Q&A, app onboarding Q&A, per-assessment RAG hits, curated surface map, mermaid. Returns exact string `UNANSWERED` when nothing supports an answer. |
 | `stride_threat_modeling` | STRIDE threat generation |
 | `business_logic_threat_modeling` | Business-logic vulnerability generation |
 | `threat_analysis` | Generic framework-agnostic threat prompt |
@@ -1123,9 +1147,17 @@ Template variables use `string.Template` (`$var` / `${var}`) so literal `{`/`}` 
 
 ### 19.2 `crud/application_crud.py`
 
-App / question / progress helpers: `get_app`, `get_response`, `create_response`, `update_response`, `get_total_questions_by_category`, `count_answered_questions`, `get_progress`, `create_progress`, `update_progress_status`, `get_all_responses`, `get_question`, `get_category`, etc.
+App / question / progress helpers: `get_app`, `get_app_by_name` (case-insensitive, org-scoped when possible), `get_app_qna` (flat onboarding Q&A list for prompt grounding), `get_response`, `create_response`, `update_response`, `get_total_questions_by_category`, `count_answered_questions`, `get_progress`, `create_progress`, `update_progress_status`, `get_all_responses`, `get_question`, `get_category`, etc.
 
-### 19.3 `crud/surface_map_crud.py`
+### 19.3 `crud/org_crud.py`
+
+Org lookup + onboarding fetchers. Prior to this module the only `Org` lookups were inline `db.query(Org)` calls in the org router; auto-answer needed to resolve `Assessment.org_name` (a plain string, no FK today) back to an `Org.id` in order to load the org's onboarding Q&A, so the queries were centralised here.
+
+- `get_org_by_id(db, org_id)`
+- `get_org_by_name(db, name)` — case-insensitive exact match. Warns on ambiguity (org names are supposed to be unique) and returns the first match.
+- `get_org_qna(db, org_id)` — flat `[{category, question, answer}, ...]` for prompt-time grounding. Empty answers dropped.
+
+### 19.4 `crud/surface_map_crud.py`
 
 Threat Modeller Inventory helpers:
 
@@ -1135,7 +1167,7 @@ Threat Modeller Inventory helpers:
 
 The `upsert_surface_map` implementation catches MariaDB's `HA_ERR_RECORD_CHANGED` (message: `"Record has changed since last read in table 'surface_map'"`), rolls back, and retries up to 4 times with backoff (50 ms → 150 ms → 400 ms). The error surfaces from InnoDB when a unique-key probe races another transaction's row lock during a concurrent write to the same `(assessment_id, image_id)` pair — retrying with a fresh transaction snapshot resolves it because the racing writer has committed by then. Any other operational error propagates immediately.
 
-### 19.4 Session lifecycle
+### 19.5 Session lifecycle
 
 CRUD functions accept a `Session` — they don't own the transaction. Callers use one of:
 
@@ -1448,6 +1480,129 @@ See [blancService/requirements.txt](blancService/requirements.txt) for the fully
 - **OCR** — paddleocr, paddlepaddle (optional, lazy-loaded)
 - **Storage** — boto3 (S3 backend)
 - **Utilities** — PyYAML, colorlog, tenacity, requests, Pillow
+
+---
+
+## 24. External Integrations Framework
+
+**Package:** [blancService/blanc/core/integrations/](blancService/blanc/core/integrations/)
+**Reference connector:** [blancService/blanc/modules/Example.py](blancService/blanc/modules/Example.py)
+**Config:** `integrations:` block in `config.yml` — see `config.yml.example` for a fully-commented template
+
+Pluggable connectors that hydrate `SurfaceMap` fields from org-owned upstream systems (docs indexes, service catalogs, AI agents, custom REST APIs) **before** threat modelling runs. Zero connectors configured = zero external calls; the framework is a no-op unless a connector is wired up.
+
+### 24.1 Why this exists
+
+`SurfaceComponent` has a handful of fields (`desc`, `exposure`, `environment`, `authn`, `authz`, …) that an analyst would normally type in by hand. In most orgs that information already lives somewhere — a wiki, a service registry, an internal AI assistant. The integrations framework lets an org plug its own upstream into Blanc so those fields are auto-filled at the end of Phase A, before the user opens the Threat Modeller Inventory UI.
+
+### 24.2 Layers
+
+| Layer | File | Role |
+|---|---|---|
+| Base contract | `base.py` | `SurfaceMapConnector` ABC (three methods: `get_api_calls`, `parse_response`, `db_operations`). `ConnectorResult` DTO carrying `value` + `source_ref`. |
+| Registry | `registry.py` | `@connector` decorator. Class-level `name` attribute is the registry key AND the YAML entry key. |
+| Auth | `auth.py` | Header-template auth. Supports `${env:VAR}` (resolved at request time) and `${token:X}` (resolved via a startup-registered callable, cached with 60 s refresh margin). |
+| HTTP runner | `http_runner.py` | httpx wrapper: retries on `TransportError` + `RemoteProtocolError` with `wait_exponential_jitter`, TTL response cache, semaphore, host allow-list (SSRF guard), circuit breaker, `verify_ssl: true \| false \| "/path/to/ca.pem"`, short `keepalive_expiry` to avoid stale-socket reuse against fragile upstreams. |
+| Dispatcher | `dispatcher.py` | `hydrate(surface_map, assessment_id, image_id)` — for each `field_sources` entry, fans out per-entity concurrent calls to the ordered connector chain. First non-null result wins. Uses `ContextVar` to plumb `(assessment_id, image_id)` into `db_helpers` without threading it through every method. |
+| Factory | `factory.py` | `build_dispatcher(cfg)` — imports every declared connector module (triggering the `@connector` decorator), builds one `HttpRunner` + `Auth` per connector, logs dead-reference warnings for `field_sources` entries pointing at unknown / non-supporting connectors. |
+| DB helpers | `db_helpers.py` | `update_surface_field(entity_id, kind, field, value, provider, source_ref)` — respects user-lock (`sources[<field>].provider == "user"` → silently drops) and stamps provenance on every write. |
+
+### 24.3 YAML shape
+
+```yaml
+integrations:
+  # Named credentials. ${env:VAR} / ${token:X} placeholders resolved at request time.
+  auth:
+    example_bearer:
+      header: "Authorization"
+      value:  "Bearer ${env:EXAMPLE_API_TOKEN}"
+
+  # Connector instances. Key must match the class `name` attribute.
+  # Only transport concerns here — prompts / models / retriever names
+  # belong in the connector class.
+  connectors:
+    Example:
+      module: blanc.modules.Example
+      auth:   example_bearer
+      url:    "https://your-agent-endpoint.example.com/ask"
+      verify_ssl: true
+      timeout_s: 60
+      cache_ttl_s: 3600
+      max_concurrent_requests: 4
+      max_retries: 3
+      keepalive_expiry_s: 5
+      circuit_breaker_failures: 5
+      circuit_breaker_cooldown_s: 60
+      allowed_hosts:
+        - "your-agent-endpoint.example.com"
+      # Optional per-deployment override of the vendor model alias:
+      # model: "your-model-alias"
+
+  # Routing: which connector(s) fill which target, in fallback order.
+  # First non-null result wins. Empty / omitted target = left alone.
+  # Reserved key prefixes:
+  #   component.<field>  — hydrated per component during Phase A
+  #   boundary.<field>   — hydrated per trust boundary during Phase A
+  field_sources:
+    "component.desc":        [Example]
+    # "component.exposure":    [Example]
+    # "component.environment": [Example]
+```
+
+### 24.4 Runtime flow
+
+1. **App startup** — `create_app()` builds a single `Dispatcher` via `factory.build_dispatcher(get_settings())` and caches it on `app.state.integrations_dispatcher`. RMQ consumers reuse the same instance via a lazy module-level singleton in `core/document_analysis.py` so HTTP clients, TTL caches, and circuit-breaker state survive across every image and assessment.
+2. **Phase A end** — `auto_populate_surface_map(...)` seeds the row if missing, then always runs `dispatcher.hydrate(payload, assessment_id, image_id)`. Re-runs are safe because `update_surface_field` respects user-lock and `HttpRunner` deduplicates via the TTL cache.
+3. **Per entity × target** — the dispatcher iterates `field_sources`, resolves `kind` (`component` / `boundary`), and fans out `_run_chain(target, chain, entity)` tasks concurrently via `asyncio.gather(..., return_exceptions=True)`. A raise in one connector does not cancel siblings.
+4. **Per chain** — connectors are tried in declared order. A connector that returns `None` (empty / sentinel / unmapped enum) is a fall-through, not a failure. Once one returns a `ConnectorResult`, its `db_operations` writes the field and stamps `sources[<field>] = FieldSource(provider=..., source_ref=...)`, and the chain stops.
+5. **User-lock** — if a user has already edited the field in the Threat Modeller Inventory, `sources[<field>].provider == "user"` and the framework write is silently dropped. The user is always the authority.
+
+### 24.5 Guardrails baked into `HttpRunner`
+
+- **TLS verification** — `verify_ssl: true` (default), `false` (curl -k equivalent), or a path to a PEM bundle for private CAs.
+- **Host allow-list** — `allowed_hosts` is a hard SSRF guard; anything else raises `HostNotAllowed` before the socket opens.
+- **Concurrency cap** — `max_concurrent_requests` semaphore across every request the connector sends during one dispatcher sweep.
+- **TTL response cache** — keyed by `(method, url, body[:512])`. Zero disables. Deduplicates repeat lookups within one hydration.
+- **Circuit breaker** — trips after N consecutive failures, stays open for a cooldown window. Requests during that window raise `CircuitOpenError` without hitting the wire.
+- **Retry** — `AsyncRetrying` with `stop_after_attempt(max_retries)` + `wait_exponential_jitter`, filtered to `httpx.TransportError | RemoteProtocolError` only. 4xx responses are NOT retried (client bug).
+- **Short keepalive** — `keepalive_expiry_s` defaults to 5. Prevents httpx from reusing half-closed sockets after an upstream's idle timeout.
+- **Response byte cap** — `max_response_bytes` guards against a runaway upstream flooding memory.
+
+### 24.6 Provenance & audit
+
+Every successful write stamps `SurfaceComponent.sources[<field>] = FieldSource(provider=<connector name>, source_ref=<upstream id>, updated_at=<ts>)`. The Threat Modeller Inventory UI renders this as a "🔗 `<connector>` · `<when>`" chip next to the field, and a hypothetical future reconciler can compare precedence across providers.
+
+### 24.7 Adding a new connector
+
+Three files, no framework changes:
+
+1. **Class** — `blanc/modules/<YourConnector>.py`. Copy `Example.py`, rename the class, set `name = "<YourConnector>"`, and rewrite `get_api_calls` / `parse_response` to match your upstream's wire format.
+2. **Config** — one entry under `integrations.connectors` in `config.yml` plus the target routing under `field_sources`.
+3. **Auth (optional)** — one entry under `integrations.auth` if the connector needs a header that isn't already declared.
+
+The registry auto-discovers the class the first time the module is imported (via the `@connector` decorator), so `factory.build_dispatcher` picks it up at boot without any explicit registration.
+
+### 24.8 Example connector — `blanc/modules/Example.py`
+
+Reference implementation you can copy. Wire format documented in the module docstring:
+
+```
+POST  {url}
+Authorization: Bearer <token>              (from auth profile)
+Content-Type: application/json
+
+Request:
+    {"prompt": "What is Kafka?",
+     "model":  "example-model",
+     "max_tokens": 400}
+
+Response (200 OK):
+    {"id":    "resp_a1b2c3d4",             # stamped into source_ref
+     "text":  "Kafka is a distributed streaming platform ...",
+     "usage": {"input_tokens": 42, "output_tokens": 87}}
+```
+
+The connector ships a parser toolkit (`_text`, `_enum`, `_clean_answer`) that handles the common LLM-proxy oddities: markdown emphasis, trailing `**Sources:**` blocks, hard-break whitespace, enum answers buried in prose (`internet-facing` → `Public`, `production` → `prod`, etc.). Reuse them in your own connector if the upstream is another LLM proxy.
 
 ---
 

@@ -303,6 +303,13 @@ def create_app() -> FastAPI:
     app.middleware("http")(_request_id_middleware)
     app.mount("/uploads", StaticFiles(directory=uploads_dir), name="uploads")
 
+    # ── External integrations dispatcher ──────────────────────────
+    # Build once at boot. Failure to build any single connector is
+    # logged and does NOT block startup — the rest of the app is
+    # still usable, we just skip external hydration for that source.
+    from blanc.core.integrations.factory import build_dispatcher
+    app.state.integrations_dispatcher = build_dispatcher(config)
+
     origins = sorted({
         "http://localhost:3000",
         "http://127.0.0.1:3000",

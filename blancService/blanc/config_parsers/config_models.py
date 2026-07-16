@@ -1,5 +1,5 @@
-from pydantic import BaseModel, Field
-from typing import Literal, List, Dict, Union
+from pydantic import BaseModel, ConfigDict, Field
+from typing import Any, Literal, List, Dict, Union
 
 
 class ModelConfig(BaseModel):
@@ -154,6 +154,74 @@ class StorageConfig(BaseModel):
     s3: S3Config = S3Config()
 
 
+# ── External integrations (surface-map hydration) ────────────────
+
+class AuthProfileConfig(BaseModel):
+    """Named credential — referenced by
+    ``integrations.connectors[*].auth``.
+
+    ``value`` is a header value template. Two placeholder patterns are
+    resolved at request time:
+
+      * ``${env:VAR}``   — read from ``os.environ`` on every call.
+      * ``${token:NAME}`` — resolved from a token source registered at
+        app startup via ``register_token_source(NAME, fn)``.
+
+    Secrets are never inlined into the YAML — only their env var name
+    or token source name is.
+    """
+    header: str
+    value: str
+
+
+class ConnectorConfig(BaseModel):
+    """One instance of an external-integration connector.
+
+    Only *transport* concerns live here (URL, timeouts, cache, host
+    allow-list, circuit breaker). Anything domain-specific — prompt
+    text, model names, per-vendor request-body knobs — belongs inside
+    the connector class, NOT in this YAML block.
+    """
+    module: str                                       # e.g. "blanc.modules.Example"
+    auth: str                                         # key into integrations.auth
+
+    url: str = ""
+    timeout_s: float = 30.0
+    cache_ttl_s: int = 300
+    max_concurrent_requests: int = 10
+    max_response_bytes: int = 5_000_000
+    circuit_breaker_failures: int = 5
+    circuit_breaker_cooldown_s: int = 60
+    allowed_hosts: List[str] = Field(default_factory=list)
+
+    # TLS verification. Accepts:
+    #   True   — default; verify against certifi's bundle
+    #   False  — skip verification entirely (equivalent to `curl -k`).
+    #            Use for internal upstreams behind a private CA
+    #            when you don't have (or don't want to install) the
+    #            org CA bundle.
+    #   "/path/to/ca.pem" — verify against a specific PEM bundle.
+    verify_ssl: Union[bool, str] = True
+
+    # Escape hatch for connectors that genuinely need one non-standard
+    # transport knob (e.g. custom TLS cert path). Prompt / model /
+    # retriever choices do NOT belong here — put them in the class.
+    extra: Dict[str, Any] = Field(default_factory=dict)
+
+
+class IntegrationsConfig(BaseModel):
+    """Pluggable connector registry.
+
+    * ``auth``          — named credentials
+    * ``connectors``    — connector instances (one per org integration)
+    * ``field_sources`` — surface-map target → ordered fallback chain of
+                          connector names. First non-null result wins.
+    """
+    auth: Dict[str, AuthProfileConfig] = Field(default_factory=dict)
+    connectors: Dict[str, ConnectorConfig] = Field(default_factory=dict)
+    field_sources: Dict[str, List[str]] = Field(default_factory=dict)
+
+
 class AppConfig(BaseModel):
     logging: dict
     openaiconfig: OpenAIConfig
@@ -168,3 +236,4 @@ class AppConfig(BaseModel):
     rag_config: RAGConfig
     pricing: PricingConfig = PricingConfig()
     storage: StorageConfig = StorageConfig()
+    integrations: IntegrationsConfig = IntegrationsConfig()
