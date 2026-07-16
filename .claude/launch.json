@@ -1,0 +1,17 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "money-manager",
+      "runtimeExecutable": "env",
+      "runtimeArgs": ["PORT=3999", "DB_PATH=/private/tmp/claude-501/-Users-saddamhussain-Downloads-blanc/d94019c0-67be-4a4f-a9e5-3715debae0be/scratchpad/preview-test.db", "node", "/Users/saddamhussain/Desktop/monthlyExpense/server.js"],
+      "port": 3999
+    },
+    {
+      "name": "money-mobile-web",
+      "runtimeExecutable": "sh",
+      "runtimeArgs": ["-c", "cd /Users/saddamhussain/Desktop/monthlyExpense/mobile && CI=1 npx expo start --web --port 8090 --offline"],
+      "port": 8090
+    }
+  ]
+}

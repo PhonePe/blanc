@@ -9,8 +9,8 @@
 <br/>
 
 [![License](https://img.shields.io/badge/License-Apache%202.0-FFFFFF?style=for-the-badge&labelColor=555555)](LICENSE)
-[![Stars](https://img.shields.io/github/stars/blanc-project/blanc?style=for-the-badge&logo=github&logoColor=FFFFFF&color=FFFFFF&labelColor=555555&cacheSeconds=300)](https://github.com/blanc-project/blanc/stargazers)
-![Open issues](https://img.shields.io/github/issues/blanc-project/blanc?style=for-the-badge&color=FFFFFF&labelColor=555555)
+[![Stars](https://img.shields.io/github/stars/phonepe/blanc?style=for-the-badge&logo=github&logoColor=FFFFFF&color=FFFFFF&labelColor=555555&cacheSeconds=300)](https://github.com/phonepe/blanc/stargazers)
+![Open issues](https://img.shields.io/github/issues/phonepe/blanc?style=for-the-badge&color=FFFFFF&labelColor=555555)
 ![PRs welcome](https://img.shields.io/badge/PRs-welcome-FFFFFF?style=for-the-badge&labelColor=555555)
 <!-- 
 [![Join Discord](https://img.shields.io/badge/Join-Discord-5865F2?style=for-the-badge&logo=discord&logoColor=FFFFFF&labelColor=555555)](https://discord.gg/)
@@ -79,7 +79,7 @@ Blanc has two components — a FastAPI backend (`blancService/`) and a Next.js s
 The bundled `docker-compose.yml` brings up MariaDB, RabbitMQ, the FastAPI backend, and the Next.js studio in one shot. All configuration lives in a single YAML file — no `.env` needed.
 
 ```bash
-git clone https://github.com/blanc-project/blanc.git
+git clone https://github.com/phonepe/blanc.git
 cd blanc
 
 # 1. Create your config from the example.
@@ -100,7 +100,7 @@ docker compose up --build
 ### Run locally
 
 ```bash
-git clone https://github.com/blanc-project/blanc.git
+git clone https://github.com/phonepe/blanc.git
 cd blanc
 
 # Backend

@@ -3192,114 +3192,146 @@ export default function AssessmentPage() {
       </div>
     )
 
-  // --- Phase A splash ---
-  // Until at least one image has a Mermaid diagram extracted, hide the whole
-  // studio shell and show only the animated Blanc logo. The studio chrome
-  // only appears once there's something for the user to actually inspect.
-  const anyMermaidReady = images.some(
-    (img) => !!img.flow_diagram?.mermaid && img.flow_diagram.mermaid.trim().length > 0,
-  )
+  // --- Phase A loading (summary-page-style card) ---
+  // Keep the user on this page with a stage-aware loader until BOTH Phase A
+  // steps finish — Mermaid extraction AND component analysis. Revealing the
+  // studio the moment Mermaid is ready (as the old splash did) leaves the
+  // ThreatModeller Inventory empty and confusing while COMPONENT_ANALYSIS
+  // is still running in the background.
+  //
+  // Gate: active image is PENDING/PROCESSING and its stage is still one of
+  // the two Phase-A stages. As soon as either changes (state transitions
+  // out, or stage moves past COMPONENT_ANALYSIS into SUMMARIZING/
+  // CLARIFICATION which belongs to the summary page), the studio opens.
+  const activeImg = images[activeImageIdx]
+  const activeImgState = activeImg?.state || assessmentState
+  const activeImgStage = activeImg?.stage
   const isPhaseAExtracting =
-    !anyMermaidReady && (assessmentState === "PENDING" || assessmentState === "PROCESSING")
+    (activeImgState === "PENDING" || activeImgState === "PROCESSING") &&
+    (!activeImgStage ||
+      activeImgStage === "IMAGE_PROCESSING" ||
+      activeImgStage === "COMPONENT_ANALYSIS")
 
-  if (isPhaseAExtracting)
+  if (isPhaseAExtracting) {
+    const phaseAStages = [
+      {
+        id: "IMAGE_PROCESSING",
+        label: "Generating Mermaid diagram",
+        description: "Converting your architecture image into editable Mermaid syntax",
+        icon: Eye,
+      },
+      {
+        id: "COMPONENT_ANALYSIS",
+        label: "Extracting components & boundaries",
+        description: "Identifying services, data stores, and trust boundaries",
+        icon: Layers,
+      },
+    ] as const
+    const activeIdx = Math.max(
+      0,
+      phaseAStages.findIndex((s) => s.id === activeImgStage),
+    )
     return (
-      <div className="relative flex min-h-[calc(100vh-var(--header-height))] flex-col items-center justify-center gap-8 overflow-hidden bg-background px-6 text-center">
-        {/* Soft radial halo behind the logo */}
-        <span
-          aria-hidden
-          className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_center,var(--color-primary)_0%,transparent_60%)]/10"
-        />
-        {/* Grid texture */}
-        <span
-          aria-hidden
-          className="pointer-events-none absolute inset-0 opacity-[0.07] mask-[radial-gradient(ellipse_at_center,black_30%,transparent_75%)] bg-[radial-gradient(circle,currentColor_1px,transparent_1px)] bg-size-[26px_26px] text-muted-foreground"
-        />
-
-        {/* Animated Blanc logo */}
-        <div className="relative grid size-36 place-items-center">
-          {/* Outer pulsing ring */}
-          <motion.span
-            aria-hidden
-            className="absolute inset-0 rounded-full border border-primary/30"
-            animate={{ scale: [1, 1.2, 1], opacity: [0.55, 0, 0.55] }}
-            transition={{ duration: 2.2, repeat: Infinity, ease: "easeOut" }}
-          />
-          {/* Inner pulsing ring */}
-          <motion.span
-            aria-hidden
-            className="absolute inset-3 rounded-full border border-primary/40"
-            animate={{ scale: [1, 1.12, 1], opacity: [0.7, 0.15, 0.7] }}
-            transition={{ duration: 2.2, repeat: Infinity, ease: "easeOut", delay: 0.4 }}
-          />
-          {/* Conic gradient sweep */}
-          <motion.span
-            aria-hidden
-            className="absolute inset-0 rounded-full"
-            style={{
-              background:
-                "conic-gradient(from 0deg, transparent 0deg, var(--primary) 90deg, transparent 180deg)",
-              maskImage:
-                "radial-gradient(circle at center, transparent 56%, black 58%, black 62%, transparent 64%)",
-              WebkitMaskImage:
-                "radial-gradient(circle at center, transparent 56%, black 58%, black 62%, transparent 64%)",
-            }}
-            animate={{ rotate: 360 }}
-            transition={{ duration: 4, repeat: Infinity, ease: "linear" }}
-          />
-          {/* Logo plate */}
-          <motion.div
-            animate={{ scale: [1, 1.04, 1] }}
-            transition={{ duration: 2.4, repeat: Infinity, ease: "easeInOut" }}
-            className={cn(
-              "relative grid size-20 place-items-center overflow-hidden rounded-full bg-black",
-              "ring-1 ring-black/80 dark:ring-white/15",
-              "shadow-[0_1px_0_0_rgba(255,255,255,0.06)_inset,0_18px_44px_-14px_rgba(124,58,237,0.6)]",
-            )}
-          >
-            <Image
-              src="/brand.png"
-              alt="Blanc Threat Modeling Studio"
-              width={80}
-              height={80}
-              priority
-              className="size-full object-cover"
-            />
-            {/* Shimmer overlay sweeping across the logo */}
-            <motion.span
-              aria-hidden
-              className="pointer-events-none absolute inset-y-0 -left-1/2 w-1/2 bg-linear-to-r from-transparent via-white/40 to-transparent"
-              animate={{ x: ["0%", "300%"] }}
-              transition={{ duration: 1.8, repeat: Infinity, ease: "easeInOut", repeatDelay: 0.4 }}
-            />
-          </motion.div>
-        </div>
-
-        {/* Copy */}
-        <div className="relative max-w-md space-y-2">
-          <p className="text-base font-semibold text-foreground">
-            Extracting Mermaid from your diagram
-          </p>
-          <p className="text-sm font-medium text-primary">
-            {STAGES.find((s) => s.id === activeImage?.stage)?.label ||
-              (assessmentState === "PENDING" ? "Queued" : "Reading your architecture image…")}
-          </p>
-          <p className="text-xs text-muted-foreground">
-            Blanc is converting your architecture image into editable Mermaid JS. The studio will open as soon as the diagram is ready.
-          </p>
-        </div>
-
-        {/* Indeterminate progress bar */}
-        <div className="relative h-1 w-60 overflow-hidden rounded-full bg-primary/10">
-          <motion.span
-            aria-hidden
-            className="absolute inset-y-0 left-0 w-1/3 rounded-full bg-linear-to-r from-primary via-violet-500 to-fuchsia-500"
-            animate={{ x: ["-110%", "330%"] }}
-            transition={{ duration: 1.6, repeat: Infinity, ease: "easeInOut" }}
-          />
-        </div>
+      <div className="min-h-[calc(100vh-var(--header-height))] bg-background flex flex-col items-center justify-center px-4 py-10">
+        <motion.div
+          initial={{ opacity: 0, y: 8 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.35, ease: [0.22, 1, 0.36, 1] }}
+          className="w-full max-w-md"
+        >
+          <Card className="gap-0 overflow-hidden border-border/70 py-0 shadow-sm">
+            <CardHeader className="gap-3 border-b border-border/60 bg-muted/20 px-6 py-5">
+              <div className="flex items-center gap-3">
+                <div className="relative">
+                  <div className="grid size-10 place-items-center rounded-xl bg-linear-to-br from-violet-600 to-fuchsia-600 text-white shadow-sm">
+                    <Sparkles size={18} />
+                  </div>
+                  <motion.div
+                    aria-hidden
+                    className="pointer-events-none absolute -inset-1.5 rounded-xl border-2 border-violet-500/30"
+                    animate={{ scale: [1, 1.18, 1], opacity: [0.55, 0, 0.55] }}
+                    transition={{ duration: 2, repeat: Infinity, ease: "easeInOut" }}
+                  />
+                </div>
+                <div className="min-w-0">
+                  <CardTitle className="text-base">Preparing your diagram</CardTitle>
+                  <CardDescription className="mt-0.5 text-xs">
+                    This usually takes 15–60 seconds — please keep this tab open.
+                  </CardDescription>
+                </div>
+              </div>
+            </CardHeader>
+            <CardContent className="space-y-3 p-5">
+              {phaseAStages.map((stage, idx) => {
+                const Icon = stage.icon
+                const isDone = idx < activeIdx
+                const isActive = idx === activeIdx
+                return (
+                  <div
+                    key={stage.id}
+                    className={cn(
+                      "flex items-start gap-3 rounded-lg border p-3 transition-colors",
+                      isActive && "border-primary/30 bg-primary/5",
+                      isDone && "border-emerald-400/40 bg-emerald-500/5",
+                      !isActive && !isDone && "border-border/60 bg-muted/20",
+                    )}
+                  >
+                    <div
+                      className={cn(
+                        "grid size-8 shrink-0 place-items-center rounded-md transition-colors",
+                        isDone && "bg-emerald-500 text-white",
+                        isActive && "bg-primary text-primary-foreground",
+                        !isActive && !isDone && "bg-muted text-muted-foreground",
+                      )}
+                    >
+                      {isActive ? (
+                        <Loader2 size={14} className="animate-spin" />
+                      ) : isDone ? (
+                        <Check size={14} strokeWidth={3} />
+                      ) : (
+                        <Icon size={14} />
+                      )}
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <p
+                        className={cn(
+                          "text-sm font-medium leading-tight",
+                          isActive ? "text-foreground" : "text-foreground/80",
+                        )}
+                      >
+                        {stage.label}
+                      </p>
+                      <p className="mt-0.5 text-xs text-muted-foreground">
+                        {stage.description}
+                      </p>
+                    </div>
+                    {isDone && (
+                      <Badge
+                        variant="outline"
+                        className="h-5 shrink-0 gap-1 rounded-full border-emerald-300/60 bg-emerald-50 px-1.5 text-[10px] font-semibold uppercase tracking-wide text-emerald-700 dark:border-emerald-900/60 dark:bg-emerald-950/40 dark:text-emerald-300"
+                      >
+                        <Check size={9} strokeWidth={3} />
+                        Done
+                      </Badge>
+                    )}
+                  </div>
+                )
+              })}
+            </CardContent>
+            <div className="flex items-center justify-between gap-2 border-t border-border/60 bg-muted/20 px-5 py-3 text-[11px] text-muted-foreground">
+              <span className="inline-flex items-center gap-1.5">
+                <Loader2 size={11} className="animate-spin" />
+                Auto-refreshing…
+              </span>
+              <span className="font-mono tabular-nums">
+                {activeIdx + 1} / {phaseAStages.length}
+              </span>
+            </div>
+          </Card>
+        </motion.div>
       </div>
     )
+  }
 
   return (
     <TooltipProvider delayDuration={200}>
