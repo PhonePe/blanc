@@ -20,21 +20,13 @@ httpx==0.28.1
 idna==3.18
 jsonpatch==1.33
 jsonpointer==3.1.1
-# langchain==0.3.27
-# langchain-core==0.3.83
-# langchain-openai==0.3.33
-# Pinned to 0.3 because 1.x is a breaking rewrite — bump deliberately when
-# you're ready to touch blanc/core/rag_client/chunker.py.
 langchain-text-splitters==0.3.11
 langsmith==0.9.7
 mariadb==1.1.14
 multidict==6.7.1
 openai>=2.0.0,<3.0.0
 orjson==3.11.9
-# Held at 25.x — packaging 26 removes deprecated APIs still used by tenacity
-# and some httpx transitives. Bump after those upstream.
 packaging==25.0
-# pamqp is a transitive of aio-pika/aiormq; do not bump directly.
 pamqp==3.3.0
 passlib==1.7.4
 propcache==0.5.2
@@ -42,14 +34,9 @@ pyasn1==0.6.3
 pyasn1_modules==0.4.2
 pycparser==3.0
 pydantic==2.13.4
-# pydantic_core is pinned by pydantic itself (2.13.4 → 2.46.4);
-# keeping it explicit only so pip resolution is deterministic.
 pydantic_core==2.46.4
 PyJWT==2.13.0
 python-multipart==0.0.32
-# Held at 6.0.2 — paddlex (pulled in transitively by paddleocr) hard-pins
-# this. Bumping to 6.0.3 makes the resolver give up. Revisit when paddlex
-# loosens the constraint.
 PyYAML==6.0.2
 python-docx==1.2.0
 regex==2026.6.28
@@ -58,9 +45,7 @@ requests-toolbelt==1.0.0
 rsa==4.9.1
 sniffio==1.3.1
 SQLAlchemy==2.0.51
-# starlette held at 0.49 because fastapi 0.139 pins the 0.x line;
-# it will move on its own when fastapi cuts a compatible release.
-starlette==0.49.3
+starlette==1.3.1
 tenacity>=8.2.3
 tiktoken==0.13.0
 tqdm==4.68.3
