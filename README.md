@@ -99,6 +99,27 @@ docker compose up --build
 
 ### Run locally
 
+Two helper scripts drive the fastest path — everything else on this section is the manual equivalent if you want to see each step yourself.
+
+```bash
+git clone https://github.com/phonepe/blanc.git
+cd blanc
+
+./native-build.sh   # verifies Python 3.12 + Node 20, builds venv,
+                    # installs UI deps, bootstraps blancService/blanc/config/config.yml
+                    # from the example. Idempotent — safe to re-run.
+
+# Edit blancService/blanc/config/config.yml — set openaiconfig.api_key,
+# jwt_config.secret_key, admin_users, DB / RMQ connection strings.
+# You bring your own MariaDB + RabbitMQ (or run them via
+# `docker compose up mariadb rabbitmq`).
+
+./native-run.sh     # starts backend + studio in one terminal. Ctrl+C tears both down.
+```
+
+<details>
+<summary>Manual equivalent (what the scripts do)</summary>
+
 ```bash
 git clone https://github.com/phonepe/blanc.git
 cd blanc
@@ -108,12 +129,14 @@ cd blancService
 python3.12 -m venv env
 source env/bin/activate
 pip install -r requirements.txt
-python3 main.py   # loads blancService/atm/config/config.yml by default
+python3 main.py   # loads blancService/blanc/config/config.yml by default
 
 # Studio (in a second terminal)
 cd ../blancUi
 npm install
 npm run dev
 ```
+
+</details>
 
 The API comes up on `http://localhost:8000` (with `/uploads` serving uploaded artifacts) and the studio on `http://localhost:3000`.
