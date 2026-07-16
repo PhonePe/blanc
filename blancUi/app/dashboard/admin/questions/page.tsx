@@ -399,13 +399,6 @@ export default function QuestionsAdminPage() {
               </motion.div>
 
               <div className="space-y-2">
-                <Badge
-                  variant="secondary"
-                  className="gap-1.5 rounded-full border border-indigo-500/20 bg-indigo-500/10 text-indigo-600 dark:text-indigo-300"
-                >
-                  <Sparkles className="size-3" />
-                  Admin · Question Manager
-                </Badge>
                 <div>
                   <h1 className="text-balance text-3xl font-semibold tracking-tight sm:text-4xl">
                     Manage onboarding questions

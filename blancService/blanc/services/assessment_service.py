@@ -34,6 +34,40 @@ from blanc.skills import get_skill
 config = get_settings()
 
 
+def _phase_a_task_for_image(analysis: DocumentAnalysis) -> RMQMessage:
+    """Build the Phase A RMQ message for one image row.
+
+    Chooses between the image-based (``IMAGE_ANALYSIS_PHASE_A``) and
+    mermaid-based (``IMAGE_ANALYSIS_PHASE_A_FROM_MERMAID``) task types.
+    A row is treated as mermaid-input when its ``image_path`` is empty
+    AND its ``flow_diagram`` carries a non-empty Mermaid string — the
+    same rule the startup recovery loop uses in :mod:`blanc.app`, kept
+    identical so retry / recovery cannot diverge.
+    """
+    stored_mermaid = ""
+    if isinstance(analysis.flow_diagram, dict):
+        stored_mermaid = (analysis.flow_diagram.get("mermaid") or "").strip()
+
+    is_mermaid_row = not (analysis.image_path or "").strip() and bool(stored_mermaid)
+
+    if is_mermaid_row:
+        return RMQMessage(
+            task_type=TaskType.IMAGE_ANALYSIS_PHASE_A_FROM_MERMAID,
+            assessment_id=analysis.assessment_id,
+            image_id=analysis.image_id,
+            mermaid_text=stored_mermaid,
+            diagram_type=analysis.diagram_type,
+        )
+
+    return RMQMessage(
+        task_type=TaskType.IMAGE_ANALYSIS_PHASE_A,
+        assessment_id=analysis.assessment_id,
+        image_id=analysis.image_id,
+        image_path=analysis.image_path,
+        diagram_type=analysis.diagram_type,
+    )
+
+
 def _format_onboarding_qna(
     qna: List[Dict[str, str]],
     *,
@@ -976,14 +1010,11 @@ class AssessmentService:
                 AssessmentState.PENDING, AssessmentStage.INITIALIZING
             )
 
+        # Dispatch each row with the correct Phase A task type — image
+        # rows go through vision + OCR, Studio (mermaid) rows skip vision
+        # and start at surface-map extraction.
         for img in retryable_images:
-            await publish_task(RMQMessage(
-                task_type=TaskType.IMAGE_ANALYSIS_PHASE_A,
-                assessment_id=assessment_id,
-                image_id=img.image_id,
-                image_path=img.image_path,
-                diagram_type=img.diagram_type,
-            ))
+            await publish_task(_phase_a_task_for_image(img))
 
         return {"message": f"Retrying {len(retryable_images)} image(s)."}
 
@@ -1005,12 +1036,9 @@ class AssessmentService:
             AssessmentState.PENDING, AssessmentStage.INITIALIZING
         )
 
-        await publish_task(RMQMessage(
-            task_type=TaskType.IMAGE_ANALYSIS_PHASE_A,
-            assessment_id=assessment_id,
-            image_id=image_id,
-            image_path=analysis.image_path,
-            diagram_type=analysis.diagram_type,
-        ))
+        # Studio-created (mermaid-only) rows have no image on disk, so we
+        # must dispatch IMAGE_ANALYSIS_PHASE_A_FROM_MERMAID instead of the
+        # image path — the helper picks the right one.
+        await publish_task(_phase_a_task_for_image(analysis))
 
         return {"message": f"Retrying image {image_id}."}

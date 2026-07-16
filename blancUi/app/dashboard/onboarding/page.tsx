@@ -363,14 +363,6 @@ export default function OrgOnboardingModern() {
                 </div>
               </motion.div>
 
-              <Badge
-                variant="secondary"
-                className="mb-3 gap-1.5 rounded-full border border-indigo-500/20 bg-indigo-500/10 text-indigo-600 dark:text-indigo-300"
-              >
-                <Sparkles className="size-3" />
-                Organization · Onboarding
-              </Badge>
-
               <h1 className="text-balance text-3xl font-semibold tracking-tight sm:text-4xl">
                 Set up your organization profile
               </h1>

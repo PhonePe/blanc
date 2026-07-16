@@ -198,9 +198,6 @@ export default function BlancStudioPage() {
                 Blanc Studio
               </h2>
               <div className="mt-1 flex flex-wrap items-center gap-2">
-                <Badge variant="outline" className="gap-1.5 border-blue-500/20 bg-blue-500/5 text-blue-600 dark:text-blue-300">
-                  <Sparkles className="size-3" /> Mermaid Renderer
-                </Badge>
                 <Badge variant="outline">{statusLabel}</Badge>
               </div>
             </div>
@@ -394,18 +391,22 @@ export default function BlancStudioPage() {
         {/* Force flex-column so the scrollable form region can grow into
             the remaining space. shadcn's DialogContent defaults to
             `grid`, which breaks bounded overflow — override it here. */}
-        <DialogContent className="sm:max-w-5xl w-[95vw] h-[92vh] max-h-[92vh] gap-0 p-0 overflow-hidden flex flex-col">
+        {/* Mid-size dialog — ~70% of the viewport, capped at 4xl on very
+            wide monitors so the form doesn't sprawl into an unreadable
+            rectangle. Narrower than the 5xl full-flow dialog but wider
+            than the previous compact one. */}
+        <DialogContent className="w-[70vw] sm:max-w-4xl max-h-[88vh] gap-0 p-0 overflow-hidden flex flex-col">
           {/* Hero band — mirrors /dashboard/assessment/new's headline
               vocabulary so the two entry points feel like one flow. */}
-          <DialogHeader className="shrink-0 border-b border-border/60 px-8 pt-8 pb-6 text-left">
-            <span className="mb-3 inline-flex items-center gap-1.5 text-[10px] font-mono uppercase tracking-[0.18em] text-muted-foreground">
+          <DialogHeader className="shrink-0 border-b border-border/60 px-6 pt-6 pb-4 text-left">
+            <span className="mb-2 inline-flex items-center gap-1.5 text-[10px] font-mono uppercase tracking-[0.18em] text-muted-foreground">
               <span className="size-1 rounded-full bg-foreground" />
               New assessment
             </span>
-            <DialogTitle className="text-balance text-2xl font-bold leading-[1.1] tracking-tight text-foreground sm:text-[28px]">
+            <DialogTitle className="text-balance text-xl font-bold leading-[1.15] tracking-tight text-foreground sm:text-2xl">
               Start a new threat assessment
             </DialogTitle>
-            <DialogDescription className="mt-2 max-w-2xl text-sm leading-relaxed text-muted-foreground">
+            <DialogDescription className="mt-1.5 text-xs leading-relaxed text-muted-foreground">
               Share your application context. The Mermaid diagram you just
               wrote is sent as-is — no image upload, no vision LLM step.
             </DialogDescription>
@@ -415,7 +416,7 @@ export default function BlancStudioPage() {
               it, flex children default to `min-height: auto` and refuse
               to shrink below their content size, so `overflow-y-auto`
               never triggers. */}
-          <div className="min-h-0 flex-1 overflow-y-auto px-2 py-6 sm:px-6">
+          <div className="min-h-0 flex-1 overflow-y-auto px-4 py-4 sm:px-5">
             <AssessmentForm
               mermaidTexts={[mermaidSource]}
               onSubmitted={(assessmentId) => {

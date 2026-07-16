@@ -142,7 +142,12 @@ function UploadStepHeader({
   optional,
   status,
 }: {
-  step: string;
+  /**
+   * Numeric badge shown left of the title. Optional — omit in single-step
+   * flows (e.g. mermaid mode where only Supporting Documents is visible)
+   * so the header reads as a plain section title, not "Step 3 of N".
+   */
+  step?: string;
   title: string;
   icon?: React.ComponentType<{ className?: string }>;
   required?: boolean;
@@ -152,9 +157,11 @@ function UploadStepHeader({
   return (
     <div className="flex items-center justify-between gap-3">
       <div className="flex min-w-0 items-center gap-2.5">
-        <span className="flex size-6 shrink-0 items-center justify-center rounded-full border border-border bg-foreground font-mono text-[10px] font-semibold text-background dark:bg-white dark:text-black">
-          {step}
-        </span>
+        {step ? (
+          <span className="flex size-6 shrink-0 items-center justify-center rounded-full border border-border bg-foreground font-mono text-[10px] font-semibold text-background dark:bg-white dark:text-black">
+            {step}
+          </span>
+        ) : null}
         <div className="flex min-w-0 items-center gap-2">
           {Icon ? <Icon className="h-3.5 w-3.5 text-muted-foreground" /> : null}
           <span className="truncate text-sm font-medium text-foreground">
@@ -586,7 +593,10 @@ export function AssessmentForm({ mermaidTexts, onSubmitted }: AssessmentFormProp
         onSubmit={form.handleSubmit(onSubmit)}
         className="space-y-6"
       >
-        <div className="mx-auto flex w-full max-w-3xl flex-col gap-6">
+        {/* max-w-3xl fits the full image-upload flow; mermaid mode gets a
+            tighter cap so the compact single-section form doesn't stretch
+            across the reduced dialog width. */}
+        <div className={cn("mx-auto flex w-full flex-col gap-6", isMermaidMode ? "max-w-lg" : "max-w-3xl")}>
           {/* ------------ Card 01 · Application Context ------------ */}
           <Card id="context" className="scroll-mt-24 overflow-hidden border-border/70 shadow-xs">
             <span
@@ -1643,12 +1653,16 @@ export function AssessmentForm({ mermaidTexts, onSubmitted }: AssessmentFormProp
               />
               )}
 
-              <Separator />
+              {!isMermaidMode && <Separator />}
 
-              {/* -- Step 3 · Supporting Documents -- */}
+              {/* -- Step 3 · Supporting Documents --
+                  In mermaid mode this is the only visible section, so we
+                  drop the "3" step badge and the preceding Separator —
+                  the header reads as a plain section title, not "Step 3
+                  of N" dangling below a stray horizontal rule. */}
               <div className="space-y-3">
                 <UploadStepHeader
-                  step="3"
+                  step={isMermaidMode ? undefined : "3"}
                   title="Supporting Documents"
                   icon={FileText}
                   optional

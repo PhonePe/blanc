@@ -366,14 +366,6 @@ export default function AppOnboardingModern() {
                 </div>
               </motion.div>
 
-              <Badge
-                variant="secondary"
-                className="mb-3 gap-1.5 rounded-full border border-blue-500/20 bg-blue-500/10 text-blue-600 dark:text-blue-300"
-              >
-                <Sparkles className="size-3" />
-                Application · Onboarding
-              </Badge>
-
               <h1 className="text-balance text-3xl font-semibold tracking-tight sm:text-4xl">
                 Set up your application profile
               </h1>

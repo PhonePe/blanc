@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useEffect, useMemo, useState, useRef, useCallback } from "react";
+import dynamic from "next/dynamic";
 import { useParams, useRouter } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
 import Link from "next/link";
@@ -8,6 +9,24 @@ import { cn } from "@/lib/utils";
 import { isValidId, sanitizeFilename, isValidApiImageUrl } from "@/lib/sanitize";
 import { renderMermaidSvg } from "@/lib/mermaid";
 import { useTheme } from "next-themes";
+import { CodeEditor } from "@/components/CodeEditor";
+import type { MermaidRenderStatus } from "@/components/MermaidCanvas";
+
+// Same interactive Mermaid canvas used by the assessment studio — matches
+// pan/zoom behaviour and toolbar so the diagram experience is identical
+// across studio and threat report.
+const MermaidCanvas = dynamic(
+  () => import("@/components/MermaidCanvas").then((m) => m.MermaidCanvas),
+  {
+    ssr: false,
+    loading: () => (
+      <div className="flex h-full min-h-[500px] items-center justify-center gap-2 bg-muted/30 text-sm text-muted-foreground">
+        <Loader2 className="size-4 animate-spin" />
+        Loading Mermaid renderer
+      </div>
+    ),
+  }
+);
 
 // UI Components
 import {
@@ -86,6 +105,8 @@ import {
   Timer,
   DollarSign,
   Zap,
+  AlertCircle,
+  FileJson,
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 
@@ -427,6 +448,90 @@ const MermaidDiagram = ({ diagram }: { diagram: string }) => {
             dangerouslySetInnerHTML={{ __html: svg }}
           />
         </div>
+      </div>
+    </div>
+  );
+};
+
+/**
+ * Split view identical to the assessment studio's Diagram tab: read-only
+ * Mermaid source on the left, live pan/zoom canvas on the right. Used
+ * from the threat report Diagram tab so users get the same experience
+ * across studio and post-analysis views.
+ */
+const DiagramWithSource = ({ diagram, title }: { diagram: string; title?: string }) => {
+  const [renderStatus, setRenderStatus] = useState<MermaidRenderStatus>({ state: "idle" });
+
+  return (
+    <div className="overflow-hidden rounded-2xl border border-border bg-card shadow-sm">
+      <div className="grid grid-cols-1 lg:grid-cols-[minmax(320px,420px)_1fr]">
+        {/* Left: Mermaid JS source (read-only) */}
+        <aside className="min-h-0 border-b bg-card/30 lg:border-b-0 lg:border-r">
+          <div className="flex h-full flex-col gap-3 p-4">
+            <div className="flex items-center justify-between gap-3">
+              <div className="flex items-center gap-2 text-sm font-semibold">
+                <FileJson className="size-4" />
+                Mermaid JS
+              </div>
+              <div className="flex items-center gap-1.5">
+                {renderStatus.state === "loading" && (
+                  <Badge variant="outline" className="gap-1 text-[10px]">
+                    <Loader2 className="size-2.5 animate-spin" />
+                    rendering
+                  </Badge>
+                )}
+                {renderStatus.state === "ok" && (
+                  <Badge
+                    variant="outline"
+                    className="gap-1 border-emerald-500/40 bg-emerald-500/10 text-[10px] text-emerald-700 dark:text-emerald-300"
+                  >
+                    <CheckCircle2 className="size-2.5" />
+                    live
+                  </Badge>
+                )}
+                {renderStatus.state === "error" && (
+                  <Badge
+                    variant="outline"
+                    className="gap-1 border-destructive/40 bg-destructive/10 text-[10px] text-destructive"
+                  >
+                    <AlertCircle className="size-2.5" />
+                    parse error
+                  </Badge>
+                )}
+                <Badge variant="outline">{diagram.length} chars</Badge>
+              </div>
+            </div>
+            <CodeEditor
+              value={diagram}
+              onChange={() => { /* read-only in threat view */ }}
+              disabled
+              errorLine={renderStatus.state === "error" ? renderStatus.line : undefined}
+              placeholder="Mermaid source will appear here"
+              className="min-h-72 lg:min-h-0 lg:h-[560px]"
+            />
+          </div>
+        </aside>
+
+        {/* Right: rendered diagram (pan/zoom) */}
+        <section className="min-h-0 bg-muted/20 p-3">
+          <div
+            className="h-full min-h-[500px] overflow-hidden rounded-md border bg-background shadow-sm lg:h-[600px]"
+            aria-label={title ? `Rendered diagram — ${title}` : "Rendered diagram"}
+          >
+            {diagram ? (
+              <MermaidCanvas
+                chart={diagram}
+                className="h-full"
+                onStatusChange={setRenderStatus}
+              />
+            ) : (
+              <div className="flex h-full min-h-[500px] items-center justify-center gap-2 text-sm text-muted-foreground">
+                <ImageIcon className="size-4" />
+                No diagram available for this image
+              </div>
+            )}
+          </div>
+        </section>
       </div>
     </div>
   );
@@ -2487,7 +2592,7 @@ export default function ThreatReportModern() {
                               <p className="text-xs text-muted-foreground">Interactive architecture visualization — drag to pan, scroll to zoom</p>
                             </div>
                           </div>
-                          <MermaidDiagram diagram={mermaidDiagram} />
+                          <DiagramWithSource diagram={mermaidDiagram} title="Data Flow Diagram" />
                         </motion.div>
                       );
                     }
@@ -2521,7 +2626,7 @@ export default function ThreatReportModern() {
                                 <p className="text-xs text-muted-foreground">Architecture diagram derived from the uploaded image</p>
                               </div>
                             </div>
-                            <MermaidDiagram diagram={diagram} />
+                            <DiagramWithSource diagram={diagram} title={`Data Flow — ${filename}`} />
                           </>
                         ) : null}
 

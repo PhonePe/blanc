@@ -223,13 +223,6 @@ export default function CreateRagPage() {
               <BookOpen className="relative size-5" />
             </motion.div>
             <div>
-              <Badge
-                variant="outline"
-                className="mb-2 gap-1 rounded-full border-indigo-500/30 bg-indigo-500/5 px-2 text-[10px] font-semibold uppercase tracking-wider text-indigo-700 dark:text-indigo-300"
-              >
-                <Sparkles className="size-2.5" />
-                Retrieval · Augmented · Generation
-              </Badge>
               <h1 className="text-2xl font-bold tracking-tight text-foreground sm:text-[28px]">
                 Create RAG from PDF
               </h1>
