@@ -14,6 +14,7 @@ final.py
 # Directories
 temp/
 env/
+uploads/
 
 # Python bytecode
 __pycache__/
