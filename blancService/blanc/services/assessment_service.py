@@ -427,6 +427,10 @@ class AssessmentService:
         return {
             "state": assessment.state,
             "stage": assessment.stage,
+            # Surface the assessment-level error_message so the threat / summary
+            # pages can show the actual backend failure text (not a hardcoded
+            # placeholder). Populated by state_machine.transition_assessment.
+            "error_message": getattr(assessment, "error_message", None),
             "images": [
                 {
                     "image_id": s["image_id"],

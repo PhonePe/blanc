@@ -35,6 +35,7 @@ import {
 
 import { api } from "@/lib/api-client"
 import { cn } from "@/lib/utils"
+import { FailedModal } from "@/components/failed-modal"
 import {
   useAssessmentData,
   type AssessmentImage,
@@ -118,6 +119,7 @@ export default function AssessmentSummaryPage() {
   const {
     assessmentState,
     assessmentStage,
+    assessmentErrorMessage,
     images,
     loading,
     usageData,
@@ -133,6 +135,34 @@ export default function AssessmentSummaryPage() {
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [isSaving, setIsSaving] = useState(false)
   const [isAutoAnswering, setIsAutoAnswering] = useState<string | null>(null)
+  const [isRetrying, setIsRetrying] = useState(false)
+  const [showFailedModal, setShowFailedModal] = useState(false)
+
+  // Auto-open the modal the first time we transition into FAILED so the
+  // user isn't left staring at an empty summary page. Re-openable from
+  // the inline "View Details" banner below.
+  useEffect(() => {
+    if (assessmentState === "FAILED") setShowFailedModal(true)
+  }, [assessmentState])
+
+  const handleRetryAll = useCallback(async () => {
+    if (!assessmentId) return
+    setIsRetrying(true)
+    try {
+      await api.post(
+        `/assessment/${assessmentId}/retry-analysis`,
+        {},
+        { retryOnPost: true },
+      )
+      toast.success("Retry queued — refreshing…")
+      setShowFailedModal(false)
+      refetch()
+    } catch (err: any) {
+      toast.error(err?.message || "Retry failed. Please try again.")
+    } finally {
+      setIsRetrying(false)
+    }
+  }, [assessmentId, refetch])
 
   const autoSaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
@@ -465,6 +495,38 @@ export default function AssessmentSummaryPage() {
 
   return (
     <div className="min-h-screen bg-background">
+      <FailedModal
+        open={showFailedModal}
+        onClose={() => setShowFailedModal(false)}
+        onRetry={handleRetryAll}
+        isRetrying={isRetrying}
+        errorMessage={assessmentErrorMessage}
+        title="Summary Generation Failed"
+        retryLabel="Retry analysis"
+      />
+
+      {/* Persistent inline banner for FAILED state — re-opens the modal.
+          Kept above the top nav so it's the first thing the user sees. */}
+      {assessmentState === "FAILED" && (
+        <div className="border-b border-destructive/20 bg-destructive/5 px-4 py-2.5 sm:px-6 flex items-center justify-between gap-3">
+          <div className="flex items-center gap-2.5 text-sm text-destructive">
+            <XCircle className="size-4 shrink-0" />
+            <span className="font-medium">Summary generation failed</span>
+            {assessmentErrorMessage ? (
+              <span className="text-destructive/70 truncate max-w-[420px]">
+                {assessmentErrorMessage}
+              </span>
+            ) : null}
+          </div>
+          <button
+            onClick={() => setShowFailedModal(true)}
+            className="h-7 rounded-md border border-destructive/40 bg-background px-3 text-xs font-medium text-destructive hover:bg-destructive/10 transition-colors"
+          >
+            View Details
+          </button>
+        </div>
+      )}
+
       {/* --- Top Navigation --- */}
       <motion.header
         initial={{ opacity: 0, y: -4 }}

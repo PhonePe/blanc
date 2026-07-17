@@ -210,6 +210,7 @@ type AssignedReviewer = {
 };
 
 import { api, API_BASE } from "@/lib/api-client";
+import { FailedModal } from "@/components/failed-modal";
 
 const getErrorMessage = (err: unknown) =>
   err instanceof Error ? err.message : "Unknown error";
@@ -649,6 +650,11 @@ export default function ThreatReportModern() {
   const [submittingReview, setSubmittingReview] = useState(false);
   const [reviewComment, setReviewComment] = useState("");
   const [assessmentState, setAssessmentState] = useState<string>("");
+  // Backend-provided failure text from /threat_modeling/{id}/status.
+  // Feeds both the FailedModal body and the inline banner subtitle.
+  const [assessmentErrorMessage, setAssessmentErrorMessage] = useState<string | null>(null);
+  const [showFailedModal, setShowFailedModal] = useState(false);
+  const [isRetrying, setIsRetrying] = useState(false);
   const [approvingAssessment, setApprovingAssessment] = useState(false);
   const [approveComment, setApproveComment] = useState("");
   const [showApprovePanel, setShowApprovePanel] = useState(false);
@@ -665,6 +671,11 @@ export default function ThreatReportModern() {
       const statusData = json?.data;
       setApiStatus(statusData);
       if (statusData?.state) setAssessmentState(statusData.state);
+      // Surface the assessment-level error_message so both the banner
+      // and the FailedModal show the real backend failure (rather than
+      // a hardcoded placeholder).
+      setAssessmentErrorMessage(statusData?.error_message ?? null);
+      if (statusData?.state === "FAILED") setShowFailedModal(true);
       return statusData;
     } catch (err: unknown) {
       setError(getErrorMessage(err));
@@ -717,7 +728,8 @@ export default function ThreatReportModern() {
         stopPolling();
         justTriggeredRef.current = false;
         setLoading(false);
-        setError("Pipeline failed. Click 'Re-Analyze' to retry.");
+        setError(status.error_message || "Pipeline failed. Click 'Re-Analyze' to retry.");
+        setShowFailedModal(true);
       } else if (status.state === "NEEDS_INPUT") {
         stopPolling();
         justTriggeredRef.current = false;
@@ -893,7 +905,8 @@ export default function ThreatReportModern() {
           break;
         case "FAILED":
           setLoading(false);
-          setError("Pipeline failed. Click 'Re-Analyze' to retry.");
+          setError(status.error_message || "Pipeline failed. Click 'Re-Analyze' to retry.");
+          setShowFailedModal(true);
           break;
         default:
           await triggerThreatModeling();
@@ -1868,7 +1881,9 @@ export default function ThreatReportModern() {
   const handleReanalyzeThreats = async () => {
     try {
       setLoading(true);
+      setIsRetrying(true);
       setError(null);
+      setShowFailedModal(false);
       await api.post(`/threat_modeling/${id}/reanalyze`, {}, { retryOnPost: true });
       toast.info("Re-analysis started — this may take a few minutes");
       startStatusPolling();
@@ -1882,6 +1897,8 @@ export default function ThreatReportModern() {
         setError(msg);
       }
       setLoading(false);
+    } finally {
+      setIsRetrying(false);
     }
   };
 
@@ -2026,7 +2043,37 @@ export default function ThreatReportModern() {
 
   return (
     <div className="min-h-screen bg-background text-foreground pb-32">
-      
+      <FailedModal
+        open={showFailedModal}
+        onClose={() => setShowFailedModal(false)}
+        onRetry={handleReanalyzeThreats}
+        isRetrying={isRetrying}
+        errorMessage={assessmentErrorMessage}
+        title="Threat Generation Failed"
+        retryLabel="Re-analyze"
+      />
+
+      {/* Persistent inline banner for FAILED state — re-opens the modal. */}
+      {assessmentState === "FAILED" && (
+        <div className="border-b border-destructive/20 bg-destructive/5 px-6 py-2.5 flex items-center justify-between gap-3">
+          <div className="flex items-center gap-2.5 text-sm text-destructive min-w-0">
+            <XCircle className="size-4 shrink-0" />
+            <span className="font-medium">Threat generation failed</span>
+            {assessmentErrorMessage ? (
+              <span className="text-destructive/70 truncate">
+                {assessmentErrorMessage}
+              </span>
+            ) : null}
+          </div>
+          <button
+            onClick={() => setShowFailedModal(true)}
+            className="h-7 rounded-md border border-destructive/40 bg-background px-3 text-xs font-medium text-destructive hover:bg-destructive/10 transition-colors shrink-0"
+          >
+            View Details
+          </button>
+        </div>
+      )}
+
       {/* --- Header (assessment-style sticky blur) --- */}
       <motion.header
         initial={{ opacity: 0, y: -10 }}
