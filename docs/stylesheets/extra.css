@@ -1,9 +1,41 @@
-.md-typeset table {
-    border-collapse: collapse;
+:root {
+  --bg: #FAF8F5;
+  --text: #111111;
+  --muted: #777;
+  --accent: #D63B30;
+
+  --content-max-width: 880px;
 }
 
-.md-typeset table th,
-.md-typeset table td {
-    border: 0.6px solid #444;
-    padding: 8px 12px;
+body {
+  font-family: Inter;
+  background: var(--bg);
+}
+
+h1,h2,h3 {
+  font-family: "Playfair Display";
+}
+
+code {
+  font-family: "JetBrains Mono";
+}
+
+.chapter {
+  max-width: 880px;
+}
+
+/* Headings */
+h1, h2, h3, h4 {
+    font-family: "Playfair Display", serif;
+}
+
+/* Editorial labels */
+strong {
+    font-family: "Playfair Display", serif;
+    font-weight: 700;
+
+    /* compensate for smaller perceived size */
+    font-size: 1.18em;
+
+    letter-spacing: 0.01em;
 }
