@@ -1,0 +1,8 @@
+# Zensical build output
+site/
+
+# Zensical cache
+.cache/
+
+# macOS
+.DS_Store

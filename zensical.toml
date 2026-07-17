@@ -11,23 +11,23 @@
 # The site_name is shown in the page header and the browser window title
 #
 # Read more: https://zensical.org/docs/setup/basics/#site_name
-site_name = "Nika Documentation"
+site_name = "Blanc Threat Modeling - Documentation"
 
 # The site_description is included in the HTML head and should contain a
 # meaningful description of the site content for use by search engines.
 #
 # Read more: https://zensical.org/docs/setup/basics/#site_description
-site_description = "Nika is a static code review analysis tools with LLM powered false positive analysis."
-repo_url = "https://github.com/PhonePe/nika"
+site_description = "Blanc is an open-source, AI-powered threat modeling studio that identifies threats directly from design artifacts."
+repo_url = "https://github.com/PhonePe/blanc"
 # The site_author attribute. This is used in the HTML head element.
 #
 # Read more: https://zensical.org/docs/setup/basics/#site_author
-site_author = "<your name here>"
+site_author = "PhonePe"
 
 # The site_url is the canonical URL for your site. When building online
 # documentation you should set this.
 # Read more: https://zensical.org/docs/setup/basics/#site_url
-#site_url = "https://www.example.com/"
+site_url = "https://phonepe.github.io/blanc/"
 
 # The copyright notice appears in the page footer and can contain an HTML
 # fragment.
@@ -45,13 +45,14 @@ Copyright &copy; 2026 PhonePe Private Limited
 #
 # Read more: https://zensical.org/docs/setup/navigation/
 nav = [
-  { "Home" = "introduction.md" },
+  { "Introduction" = "index.md" },
+  { "Design Principles" = "design-principles.md"},
+  { "Simplifying the Process" = "simplfying-the-process.md" },
   { "Installation Guide" = "installation-guide.md" },
-  { "Run a scan" = "run-a-scan.md" },
-  { "Features" = "features.md" },
-  { "Custom Rules" = "custom-rules.md" },
+  { "Connectors" = "integrations.md" },
+  { "Onboard Your Organization" = "onboard-your-organization.md" },
+  { "Create your Threat Model" = "create-your-first-threat-model.md" },
   { "Roadmap" = "roadmap.md" },
-  {"Astrail" = "astrail.md" }
 ]
 
 # With the "extra_css" option you can add your own CSS styling to customize
@@ -295,13 +296,6 @@ repo = "fontawesome/brands/github"
 # ----------------------------------------------------------------------------
 [[project.theme.palette]]
 scheme = "default"
-toggle.icon = "lucide/sun"
-toggle.name = "Switch to dark mode"
-
-[[project.theme.palette]]
-scheme = "slate"
-toggle.icon = "lucide/moon"
-toggle.name = "Switch to light mode"
 
 # ----------------------------------------------------------------------------
 # The "extra" section contains miscellaneous settings.
