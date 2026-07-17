@@ -32,7 +32,7 @@ assessment_router = APIRouter(
 async def new_assessment(
     assessment: AssessmentCreate = Depends(AssessmentCreate.as_form),
     images: Optional[List[UploadFile]] = File(None, description="One or more architecture diagram images"),
-    mermaid_texts: Optional[List[str]] = Form(None, description="One or more Mermaid diagrams (ATM Studio flow). Sent instead of images."),
+    mermaid_texts: Optional[List[str]] = Form(None, description="One or more Mermaid diagrams (Blanc Studio flow). Sent instead of images."),
     pdf: Optional[UploadFile] = File(None, description="Optional PDF used as diagram source (single)"),
     supporting_docs: Optional[List[UploadFile]] = File(None, description="Optional supporting PDF documents (multiple)"),
     db: Session = Depends(get_db),
@@ -44,7 +44,7 @@ async def new_assessment(
     * **Image mode** — upload one or more architecture diagram images.
       Each image runs through the full pipeline (image → Mermaid →
       components).
-    * **Mermaid mode** — send one or more ``mermaid_texts`` from ATM
+    * **Mermaid mode** — send one or more ``mermaid_texts`` from Blanc
       Studio. The pipeline skips the vision LLM step and starts
       directly at the inventory (surface_map + components) stage.
 

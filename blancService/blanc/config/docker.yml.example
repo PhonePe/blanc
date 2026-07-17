@@ -19,10 +19,20 @@ fastApiConfig:
 
 openaiconfig:
   openai_url: "https://api.openai.com/v1"
-  model_name: "gpt-4o"
   provider: "openai"
   # Get a key at https://platform.openai.com/api-keys.
   api_key: "sk-REPLACE_ME"
+
+  # Fallback model + pricing. Used whenever a call doesn't match a
+  # per-purpose entry under `models` below.
+  default:
+    model_name: "gpt-4o"
+    pricing:
+      prompt_cost_per_million: 2.50
+      completion_cost_per_million: 10.00
+
+  # Optional per-purpose overrides. Any purpose not listed here inherits
+  # `default.model_name` + `default.pricing`.
   models:
     vision:
       model_name: "gpt-4o"
@@ -44,10 +54,6 @@ openaiconfig:
       model_name: "gpt-4o"
       prompt_cost_per_million: 2.50
       completion_cost_per_million: 10.00
-
-pricing:
-  prompt_cost_per_million: 2.50
-  completion_cost_per_million: 10.00
 
 rag_config:
   backend: "local"
@@ -164,25 +170,33 @@ rmqConfig:
 
 # integrations:
 #
-#   # Named credentials referenced by each connector's ``auth`` field.
-#   #   ${env:VAR}    — read from os.environ at request time. In Docker
-#   #                   pass secrets via docker-compose ``environment:``
-#   #                   or an ``env_file:``.
-#   #   ${token:X}    — resolved via register_token_source("X", fn)
-#   #                   during app startup.
-#   auth:
-#     example_bearer:
-#       header: "Authorization"
-#       value:  "Bearer ${env:EXAMPLE_API_TOKEN}"
+#   # Read top-down:
+#   #   field_sources — what needs filling, and by whom (in order)
+#   #   connectors    — the upstreams referenced above (transport only)
+#   #   auth          — the credentials each connector references
 #
-#   # Connector instances. Key = the class' ``name`` attribute.
-#   # Only transport concerns live here — vendor-specific request-body
-#   # knobs (prompts, model names, retriever names) belong in the
-#   # connector class.
+#   # 1. Routing. Which connector(s) fill which target, in fallback order.
+#   # First non-null result wins. Empty / omitted list = target left alone.
+#   #
+#   # Reserved key prefixes:
+#   #   component.<field> — hydrated per component during Phase A
+#   #   boundary.<field>  — hydrated per trust boundary during Phase A
+#   #   question.answer   — external auto-answer for clarification
+#   #                       questions; falls back to built-in RAG+LLM
+#   field_sources:
+#     "component.desc":        [Example]
+#     # "component.exposure":    [Example]
+#     # "component.environment": [Example]
+#     # "question.answer":       [Example]
+#
+#   # 2. Connector instances referenced above. Key = the class'
+#   # ``name`` attribute. Only transport concerns live here — vendor-
+#   # specific request-body knobs (prompts, model names, retriever
+#   # names) belong in the connector class.
 #   connectors:
 #     Example:
 #       module: blanc.modules.Example
-#       auth:   example_bearer
+#       auth:   example_bearer                     # ← references auth block below
 #       url:    "https://your-agent-endpoint.example.com/ask"
 #
 #       # Optional per-deployment override of the vendor model alias.
@@ -208,15 +222,13 @@ rmqConfig:
 #       allowed_hosts:
 #         - "your-agent-endpoint.example.com"
 #
-#   # Which connector(s) fill which target, in fallback order. First
-#   # non-null result wins. Empty / omitted list = target left alone.
-#   #
-#   # Reserved key prefixes:
-#   #   component.<field> — hydrated per component during Phase A
-#   #   boundary.<field>  — hydrated per trust boundary during Phase A
-#   #   question.answer   — external auto-answer for clarification
-#   #                       questions; falls back to built-in RAG+LLM
-#   field_sources:
-#     "component.desc":        [Example]
-#     # "component.exposure":    [Example]
-#     # "component.environment": [Example]
+#   # 3. Named credentials referenced by each connector's ``auth`` field.
+#   #   ${env:VAR}    — read from os.environ at request time. In Docker
+#   #                   pass secrets via docker-compose ``environment:``
+#   #                   or an ``env_file:``.
+#   #   ${token:X}    — resolved via register_token_source("X", fn)
+#   #                   during app startup.
+#   auth:
+#     example_bearer:
+#       header: "Authorization"
+#       value:  "Bearer ${env:EXAMPLE_API_TOKEN}"

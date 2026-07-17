@@ -269,7 +269,7 @@ class _ReportPDF(FPDF):
         self.set_y(-12)
         self.set_font("Helvetica", "", 7)
         self.set_text_color(148, 163, 184)  # slate-400
-        self.cell(0, 8, _safe(f"ATM Threat Model Report  -  Page {self.page_no()}/{{nb}}"), align="C")
+        self.cell(0, 8, _safe(f"Blanc Threat Model Report  -  Page {self.page_no()}/{{nb}}"), align="C")
 
     # ── Drawing helpers ──
 

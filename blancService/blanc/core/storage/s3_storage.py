@@ -7,7 +7,7 @@ remains usable without the optional dependency installed.
 
 Install with::
 
-    pip install atm[s3]      # or simply: pip install boto3
+    pip install blanc[s3]      # or simply: pip install boto3
 
 Files are uploaded to ``{prefix}{assessment_id}/{filename}`` and cached
 locally so the LLM / RAG pipeline can read them by path without re-downloading.

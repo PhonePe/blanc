@@ -2,8 +2,6 @@
 
 > **Blanc** — the FastAPI backend that powers the Blanc Studio. It ingests architecture / sequence / data-flow diagrams (plus optional supporting PDFs), runs a two-phase LLM analysis pipeline per image, auto-answers clarification questions via RAG, then generates framework-specific threats (STRIDE, Business Logic) with a full reviewer workflow.
 
-> The package used to be called `atm` (Automated Threat Modeling) — the code, config, and infra names have all been renamed to `blanc`. If you see a lingering `atm` reference in comments or third-party artifacts, treat it as legacy.
-
 **Repository:** <https://github.com/PhonePe/blanc>
 
 ---
@@ -435,9 +433,10 @@ All are Pydantic v2 `BaseModel` subclasses. The root is `AppConfig`:
 | `FastApiConf` | `appHost`, `appPort`, `num_workers` |
 | `Path` | Filesystem path settings |
 | `OpenAIConfig` | `openai_url`, `model_name`, `provider`, `api_key`, etc. |
-| `ModelConfig` | Per-purpose LLM model spec (name + pricing) |
+| `ModelConfig` | Per-purpose LLM model spec (name + rates). Overrides `openaiconfig.default` for a specific purpose. |
+| `DefaultModelConfig` | The `(model_name, pricing)` pair used as fallback. Nested under `openaiconfig.default`. |
 | `OpenApiConfig` | OpenAPI schema tweaks |
-| `PricingConfig` | Default `prompt_cost_per_million`, `completion_cost_per_million` |
+| `PricingConfig` | Default `prompt_cost_per_million`, `completion_cost_per_million` — always accessed via `openaiconfig.default.pricing`. |
 | `RAGConfig` | Namespace, collection, backend selection |
 | `RAGLocalConfig` | Local Chroma settings |
 | `RAGEmbedderConfig` | Local embedding model settings |
@@ -472,7 +471,7 @@ No more copy-pasted `[{assessment_id}]` f-string prefixes in log calls. See the 
 
 ### 5.5 Env-var overrides
 
-All env-var toggles are prefixed with `BLANC_` (were `ATM_` before the rename — legacy names are no longer honoured):
+All env-var toggles are prefixed with `BLANC_`:
 
 | Var | Effect |
 |---|---|
@@ -922,7 +921,7 @@ class TaskType(str, Enum):
 - Async publisher with connection fall-through across multiple hosts.
 - Uses **non-robust** connections (fails fast; recovery is the caller's problem).
 - Global pre-initialised producers per queue.
-- **Queue name is `BLANC`** (was `ATM` before the rename — legacy queues can be dropped).
+- **Queue name is `BLANC`**.
 - **Fallback:** if RabbitMQ is unavailable, messages are dispatched to an in-process fallback queue for synchronous execution — the app stays functional without RMQ (dev convenience).
 
 ### 12.3 Consumer — `queue/consumer.py`
@@ -1462,7 +1461,7 @@ The database schema is created automatically on first boot by `ensure_database_e
 
 `_recover_stuck_tasks()` in `blanc/app.py` runs inside the lifespan handler. It scans `DocumentAnalysis` and `Assessment` rows in `PENDING` / `PROCESSING` state whose `created_at` / `updated_at` is within the last 24 h, then re-publishes the appropriate RMQ task type. Rows older than 24 h are ignored (safety cap so ancient abandoned assessments don't get resurrected). Older rows can be retried explicitly via `POST /assessment/{aid}/retry-analysis`.
 
-Rows with `image_path=""` **and** a stored `flow_diagram.mermaid` are recognised as ATM-Studio (mermaid-mode) rows and republished as `IMAGE_ANALYSIS_PHASE_A_FROM_MERMAID`. Rows with no image path **and** no stored mermaid are marked `FAILED` (they're unrecoverable — no source data to analyse).
+Rows with `image_path=""` **and** a stored `flow_diagram.mermaid` are recognised as Blanc-Studio (mermaid-mode) rows and republished as `IMAGE_ANALYSIS_PHASE_A_FROM_MERMAID`. Rows with no image path **and** no stored mermaid are marked `FAILED` (they're unrecoverable — no source data to analyse).
 
 ---
 
@@ -1509,21 +1508,38 @@ Pluggable connectors that hydrate `SurfaceMap` fields from org-owned upstream sy
 
 ### 24.3 YAML shape
 
+Read this block **top-down like a story**:
+
+```
+integrations:
+  field_sources:   { ... }   # What targets need filling, and by whom (in order).
+  connectors:      { ... }   # The upstreams referenced above — transport concerns only.
+  auth:            { ... }   # Named credential profiles referenced by each connector.
+```
+
+Start from `field_sources` (routing), work down to `connectors` (what each name means), end at `auth` (how it authenticates). YAML dict order doesn't affect parsing, so this is purely a readability choice.
+
 ```yaml
 integrations:
-  # Named credentials. ${env:VAR} / ${token:X} placeholders resolved at request time.
-  auth:
-    example_bearer:
-      header: "Authorization"
-      value:  "Bearer ${env:EXAMPLE_API_TOKEN}"
 
-  # Connector instances. Key must match the class `name` attribute.
-  # Only transport concerns here — prompts / models / retriever names
-  # belong in the connector class.
+  # 1. Routing — which connector(s) fill which target, in fallback order.
+  # First non-null result wins. Empty / omitted target = left alone.
+  # Reserved key prefixes:
+  #   component.<field>  — hydrated per component during Phase A
+  #   boundary.<field>   — hydrated per trust boundary during Phase A
+  field_sources:
+    "component.desc":        [Example]
+    # "component.exposure":    [Example]
+    # "component.environment": [Example]
+
+  # 2. Connector instances referenced above.
+  # Key must match the class `name` attribute (here: `Example` →
+  # `blanc.modules.Example`). Only transport concerns live here —
+  # prompts / models / retriever names belong in the connector class.
   connectors:
     Example:
       module: blanc.modules.Example
-      auth:   example_bearer
+      auth:   example_bearer                     # ← references auth block below
       url:    "https://your-agent-endpoint.example.com/ask"
       verify_ssl: true
       timeout_s: 60
@@ -1538,15 +1554,13 @@ integrations:
       # Optional per-deployment override of the vendor model alias:
       # model: "your-model-alias"
 
-  # Routing: which connector(s) fill which target, in fallback order.
-  # First non-null result wins. Empty / omitted target = left alone.
-  # Reserved key prefixes:
-  #   component.<field>  — hydrated per component during Phase A
-  #   boundary.<field>   — hydrated per trust boundary during Phase A
-  field_sources:
-    "component.desc":        [Example]
-    # "component.exposure":    [Example]
-    # "component.environment": [Example]
+  # 3. Named credentials referenced by each connector's ``auth`` field.
+  # ${env:VAR}   → resolved from os.environ at request time
+  # ${token:X}   → resolved via register_token_source("X", fn) at startup
+  auth:
+    example_bearer:
+      header: "Authorization"
+      value:  "Bearer ${env:EXAMPLE_API_TOKEN}"
 ```
 
 ### 24.4 Runtime flow

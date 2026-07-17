@@ -15,11 +15,11 @@
 <!-- 
 [![Join Discord](https://img.shields.io/badge/Join-Discord-5865F2?style=for-the-badge&logo=discord&logoColor=FFFFFF&labelColor=555555)](https://discord.gg/)
 &nbsp;
-[![Read the Docs](https://img.shields.io/badge/Read-the%20Docs-FFFFFF?style=for-the-badge&logo=readthedocs&logoColor=FFFFFF&labelColor=555555)](blancService/CODEBASE_DOCUMENTATION.md) -->
+[![Read the Docs](https://img.shields.io/badge/Read-the%20Docs-FFFFFF?style=for-the-badge&logo=readthedocs&logoColor=FFFFFF&labelColor=555555)](https://phonepe.github.io/blanc/) -->
 
 <br/>
 
-**[Quick Start](#quick-start)** · **[Why Blanc](#why-blanc)** · **[Framework Coverage](#framework-coverage)** · **[How It Works](#how-blanc-works)** · **[Docs](blancService/CODEBASE_DOCUMENTATION.md)**
+**[Quick Start](#quick-start)** · **[Why Blanc](#why-blanc)** · **[Framework Coverage](#framework-coverage)** · **[How It Works](#how-blanc-works)** · **[Docs](https://phonepe.github.io/blanc/)**
 
 </div>
 
@@ -83,10 +83,10 @@ git clone https://github.com/phonepe/blanc.git
 cd blanc
 
 # 1. Create your config from the example.
-cp blancService/atm/config/docker.yml.example \
-   blancService/atm/config/docker.yml
+cp blancService/blanc/config/docker.yml.example \
+   blancService/blanc/config/docker.yml
 
-# 2. Edit blancService/atm/config/docker.yml
+# 2. Edit blancService/blanc/config/docker.yml
 #    — set openaiconfig.api_key, jwt_config.secret_key, admin_users, etc.
 
 # 3. Bring the stack up.

@@ -1,5 +1,5 @@
 """
-ATM LLM client package.
+Blanc LLM client package.
 
 Public surface:
 
@@ -13,7 +13,7 @@ Public surface:
 
 Plugging in a new provider from another package::
 
-    # myorg/atm_anthropic/__init__.py
+    # myorg/blanc_anthropic/__init__.py
     from blanc.core.llm_client import LLMProvider
 
     class AnthropicProvider(LLMProvider):
@@ -21,7 +21,7 @@ Plugging in a new provider from another package::
 
     # myorg/pyproject.toml
     # [project.entry-points."blanc.llm_providers"]
-    # anthropic = "myorg.atm_anthropic:AnthropicProvider"
+    # anthropic = "myorg.blanc_anthropic:AnthropicProvider"
 
 Then set ``BLANC_LLM_PROVIDER=anthropic`` (or override
 ``openaiconfig.provider`` in config) and the factory will pick it up.
@@ -190,11 +190,13 @@ def _build_default_client() -> LLMClient:
             prompt_cost_per_million=model_cfg.prompt_cost_per_million,
             completion_cost_per_million=model_cfg.completion_cost_per_million,
         )
-    pricing = getattr(config, "pricing", None)
+    # Default (model, pricing) is one grouped unit under
+    # openaiconfig.default — see config.yml.example.
+    default = oa.default
     resolver = ModelResolver(
-        default_model=oa.model_name,
-        default_prompt_cost=getattr(pricing, "prompt_cost_per_million", 0.0) if pricing else 0.0,
-        default_completion_cost=getattr(pricing, "completion_cost_per_million", 0.0) if pricing else 0.0,
+        default_model=default.model_name,
+        default_prompt_cost=default.pricing.prompt_cost_per_million,
+        default_completion_cost=default.pricing.completion_cost_per_million,
         purpose_map=purpose_map,
     )
 

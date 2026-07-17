@@ -41,7 +41,7 @@ def reload_config() -> dict:
         "status": "ok",
         "reloaded": {
             "llm_provider": settings.openaiconfig.provider,
-            "llm_model": settings.openaiconfig.model_name,
+            "llm_model": settings.openaiconfig.default.model_name,
             "rag_backend": settings.rag_config.backend,
         },
     }

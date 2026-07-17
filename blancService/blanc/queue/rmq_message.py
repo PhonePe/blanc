@@ -6,7 +6,7 @@ from typing import Optional
 class TaskType(str, Enum):
     """All background task types routed through RMQ."""
     IMAGE_ANALYSIS_PHASE_A = "IMAGE_ANALYSIS_PHASE_A"  # image → mermaid → components
-    IMAGE_ANALYSIS_PHASE_A_FROM_MERMAID = "IMAGE_ANALYSIS_PHASE_A_FROM_MERMAID"  # skip image→mermaid; caller supplied mermaid text (ATM Studio flow)
+    IMAGE_ANALYSIS_PHASE_A_FROM_MERMAID = "IMAGE_ANALYSIS_PHASE_A_FROM_MERMAID"  # skip image→mermaid; caller supplied mermaid text (Blanc Studio flow)
     IMAGE_ANALYSIS_PHASE_B = "IMAGE_ANALYSIS_PHASE_B"  # summary + clarification
     PDF_INGESTION = "PDF_INGESTION"
     THREAT_MODELING = "THREAT_MODELING"

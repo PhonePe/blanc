@@ -1,5 +1,5 @@
 """
-ATM Skills — Modular agent capabilities for threat modeling.
+Blanc Skills — Modular agent capabilities for threat modeling.
 
 Each Skill is a self-contained ``.md`` file with YAML frontmatter (metadata)
 and a markdown body (instructions). Skills are loaded once, cached, and

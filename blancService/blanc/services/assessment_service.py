@@ -291,7 +291,7 @@ class AssessmentService:
                     filename=safe_filename(doc_file.filename),
                 ))
 
-        # 3c. Handle mermaid_texts (ATM Studio flow) — no file upload.
+        # 3c. Handle mermaid_texts (Blanc Studio flow) — no file upload.
         # Each mermaid text becomes its own DocumentAnalysis row that
         # will start Phase A at the inventory step (skipping vision).
         #

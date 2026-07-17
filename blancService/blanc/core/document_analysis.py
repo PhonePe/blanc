@@ -227,7 +227,7 @@ def _image_to_mermaid_with_ocr(
     ocr_context = json.dumps(ocr_payload, ensure_ascii=False, indent=2)
     prompt = get_skill("image_to_mermaid_auto").render(ocr_context=ocr_context)
 
-    with tempfile.TemporaryDirectory(prefix="atm_llm_img_") as tmp_dir_name:
+    with tempfile.TemporaryDirectory(prefix="blanc_llm_img_") as tmp_dir_name:
         send_image_path = _downscale_for_llm(
             image_path, Path(tmp_dir_name), MAX_IMAGE_EDGE_PX_FOR_LLM
         )
@@ -642,7 +642,7 @@ def analyze_single_image_phase_a_from_mermaid(
     diagram_type: str = "flowchart TD",
 ):
     """Phase A variant used when the caller supplies Mermaid directly
-    (ATM Studio "Create Assessment" flow).
+    (Blanc Studio "Create Assessment" flow).
 
     Skips the image_to_mermaid vision LLM step — persists the provided
     Mermaid as the flow_diagram, then runs the same

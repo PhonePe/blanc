@@ -3,7 +3,7 @@ Vendor-neutral LLM provider interface.
 
 External orgs implement :class:`LLMProvider` and register their class under the
 ``blanc.llm_providers`` entry-point group. Core stays free of any specific LLM
-SDK so that ``pip install atm`` does not pull openai/anthropic/litellm/etc.
+SDK so that ``pip install blanc`` does not pull openai/anthropic/litellm/etc.
 """
 from __future__ import annotations
 

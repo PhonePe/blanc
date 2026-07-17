@@ -159,7 +159,7 @@ async def _handle_image_phase_a(rmq_msg: RMQMessage):
         logger.exception(f"[{assessment_id}][img:{image_id}] Phase A failed")
 
 
-# ── Image Analysis Phase A — from mermaid (ATM Studio flow) ─────
+# ── Image Analysis Phase A — from mermaid (Blanc Studio flow) ─────
 
 async def _handle_image_phase_a_from_mermaid(rmq_msg: RMQMessage):
     """Same slot as Phase A, but the caller already handed us the

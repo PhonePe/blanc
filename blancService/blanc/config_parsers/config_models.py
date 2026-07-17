@@ -2,8 +2,24 @@ from pydantic import BaseModel, ConfigDict, Field
 from typing import Any, Literal, List, Dict, Union
 
 
+class PricingConfig(BaseModel):
+    """Default $ / million tokens for the fallback model. Nested under
+    ``openaiconfig.default.pricing`` so the default model and its
+    default rates are one visually-grouped unit."""
+    prompt_cost_per_million: float = 30.0
+    completion_cost_per_million: float = 60.0
+
+
+class DefaultModelConfig(BaseModel):
+    """The (model_name, pricing) pair used when a call has no matching
+    entry under ``openaiconfig.models.<purpose>``."""
+    model_name: str
+    pricing: PricingConfig = Field(default_factory=PricingConfig)
+
+
 class ModelConfig(BaseModel):
-    """Configuration for a single LLM model with its own pricing."""
+    """Per-purpose LLM model spec (name + rates). Overrides the default
+    from ``openaiconfig.default``."""
     model_name: str
     prompt_cost_per_million: float = 30.0
     completion_cost_per_million: float = 60.0
@@ -14,24 +30,23 @@ class OpenApiConfig(BaseModel):
     model: str
     temperature: int
 
+
 class OpenAIConfig(BaseModel):
     openai_url: str
-    model_name: str  # default fallback model
+    default: DefaultModelConfig
     provider: str = "openai"
     api_key: str = ""
     models: Dict[str, ModelConfig] = Field(default_factory=dict)  # purpose -> model config
 
     def get_model(self, purpose: str) -> ModelConfig:
-        """Get model config by purpose, falling back to default."""
+        """Get model config by purpose, falling back to the default."""
         if purpose in self.models:
             return self.models[purpose]
-        return ModelConfig(model_name=self.model_name)
-
-
-class PricingConfig(BaseModel):
-    """Default pricing — used when a model doesn't specify its own."""
-    prompt_cost_per_million: float = 30.0
-    completion_cost_per_million: float = 60.0
+        return ModelConfig(
+            model_name=self.default.model_name,
+            prompt_cost_per_million=self.default.pricing.prompt_cost_per_million,
+            completion_cost_per_million=self.default.pricing.completion_cost_per_million,
+        )
 
 class Path(BaseModel):
     base_dir: str
@@ -234,6 +249,5 @@ class AppConfig(BaseModel):
     google_auth: GoogleAuthConfig
     frontend: FrontendConfig
     rag_config: RAGConfig
-    pricing: PricingConfig = PricingConfig()
     storage: StorageConfig = StorageConfig()
     integrations: IntegrationsConfig = IntegrationsConfig()

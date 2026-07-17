@@ -4,7 +4,7 @@ Azure, Ollama, ...) via a single SDK.
 
 Install the optional extra to use it::
 
-    pip install atm[litellm]
+    pip install blanc[litellm]
 
 This is a thin transport adapter. Structured outputs still go through
 ``instructor.from_litellm`` so behavior stays consistent with
