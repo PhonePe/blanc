@@ -44,7 +44,6 @@ class ThreatFrameworkConfig:
     name: str
     categories: List[str]
     model: Type[BaseModel]
-    system_role: str
     skill_name: str = "threat_analysis"  # skill file to load from blanc/skills/definitions/
 
 FRAMEWORK_REGISTRY: Dict[str, ThreatFrameworkConfig] = {
@@ -52,7 +51,6 @@ FRAMEWORK_REGISTRY: Dict[str, ThreatFrameworkConfig] = {
         name="STRIDE",
         categories=["Spoofing", "Tampering", "Repudiation", "Information Disclosure", "Denial of Service", "Elevation of Privilege"],
         model=StrideThreatModelResponse,
-        system_role="Act as an expert application security architect specializing in STRIDE threat modeling.",
         skill_name="stride_threat_modeling",
     ),
 
@@ -67,13 +65,6 @@ FRAMEWORK_REGISTRY: Dict[str, ThreatFrameworkConfig] = {
             "Resource Quota Violations"          
         ],
         model=BusinessLogicThreatModelResponse,
-        system_role=(
-            "Act as an expert Application Security Auditor specializing in OWASP Business Logic Vulnerabilities. "
-            "Do not focus on standard technical CVEs like SQL injection or cross-site scripting. Instead, carefully "
-            "analyze the provided architecture and workflows to find ways a legitimate user could maliciously abuse "
-            "the system's intended rules, skip required steps, manipulate transaction states, or exploit race "
-            "conditions for unauthorized gain."
-        ),
         skill_name="business_logic_threat_modeling",
     )
 }
@@ -153,7 +144,6 @@ def generate_framework_prompt(framework: ThreatFrameworkConfig, category: str, c
     """Loads the framework-specific skill and renders it with architecture context."""
     skill = get_skill(framework.skill_name)
     return skill.render(
-        system_role=framework.system_role,
         flow_diagram=context['flow_diagram'],
         summary=context['summary'],
         components_str=context['components_str'],
